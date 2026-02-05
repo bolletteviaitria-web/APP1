@@ -1,34 +1,78 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Custom styles for VacayStay */
+
+/* Remove focus outline on inputs for cleaner look */
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Ensure smooth transitions */
+* {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
-.App-link {
-    color: #61dafb;
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Calendar styling overrides */
+.rdp {
+    --rdp-cell-size: 40px;
+    --rdp-accent-color: hsl(43 66% 52%);
+    --rdp-background-color: hsl(43 66% 52% / 0.2);
 }
+
+.rdp-day_selected:not([disabled]) {
+    background-color: hsl(43 66% 52%);
+    color: hsl(222 47% 2%);
+}
+
+.rdp-day_selected:hover:not([disabled]) {
+    background-color: hsl(43 66% 52% / 0.9);
+}
+
+.rdp-day_range_middle {
+    background-color: hsl(43 66% 52% / 0.2);
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Prose styling for legal pages */
+.prose {
+    max-width: 65ch;
+}
+
+.prose-invert {
+    --tw-prose-body: hsl(210 40% 80%);
+    --tw-prose-headings: hsl(210 40% 98%);
+    --tw-prose-links: hsl(43 66% 52%);
+    --tw-prose-bold: hsl(210 40% 98%);
+    --tw-prose-bullets: hsl(43 66% 52%);
+}
+
+/* Animation delays for staggered animations */
+.animation-delay-100 { animation-delay: 100ms; }
+.animation-delay-200 { animation-delay: 200ms; }
+.animation-delay-300 { animation-delay: 300ms; }
+.animation-delay-400 { animation-delay: 400ms; }
+.animation-delay-500 { animation-delay: 500ms; }
