@@ -1,0 +1,136 @@
+{
+  "identity": {
+    "name": "E1",
+    "archetype": "Jewel & Luxury",
+    "mission": "Create a cinematic, exclusive vacation rental platform that feels like a private club, not a booking site."
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Playfair Display",
+      "body": "Manrope",
+      "mono": "JetBrains Mono"
+    },
+    "weights": {
+      "heading": "font-medium",
+      "body": "font-light"
+    },
+    "tracking": {
+      "heading": "tracking-tight",
+      "overline": "tracking-[0.2em]"
+    },
+    "installation": "import '@fontsource/playfair-display'; import '@fontsource/manrope'; import '@fontsource/jetbrains-mono';"
+  },
+  "colors": {
+    "palette": {
+      "background": "#020408",
+      "foreground": "#F8FAFC",
+      "card": "#0B0F17",
+      "card_foreground": "#E2E8F0",
+      "popover": "#0B0F17",
+      "popover_foreground": "#E2E8F0",
+      "primary": "#D4AF37",
+      "primary_foreground": "#020408",
+      "secondary": "#1E293B",
+      "secondary_foreground": "#F8FAFC",
+      "muted": "#1E293B",
+      "muted_foreground": "#94A3B8",
+      "accent": "#1E293B",
+      "accent_foreground": "#D4AF37",
+      "destructive": "#7F1D1D",
+      "destructive_foreground": "#F8FAFC",
+      "border": "#1E293B",
+      "input": "#1E293B",
+      "ring": "#D4AF37"
+    },
+    "gradients": {
+      "gold_rush": "bg-gradient-to-r from-[#D4AF37] to-[#FCD34D]",
+      "midnight_bloom": "bg-gradient-to-b from-[#020408] to-[#0B0F17]"
+    },
+    "rules": [
+      "Never use pure black (#000000). Use #020408 (Obsidian Blue).",
+      "Primary color (#D4AF37 - Gold) is for CTAs and Accents ONLY.",
+      "Text on dark backgrounds must be #F8FAFC (Off-white) or #E2E8F0, never pure white."
+    ]
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "base": "bg-[#0B0F17]/70 backdrop-blur-xl border border-white/10 shadow-2xl",
+      "usage": "Sticky headers, floating booking cards, toast notifications."
+    },
+    "borders": {
+      "subtle": "border border-white/5",
+      "active": "border border-[#D4AF37]/50"
+    },
+    "shadows": {
+      "glow": "shadow-[0_0_40px_-10px_rgba(212,175,55,0.3)]"
+    },
+    "textures": {
+      "noise": "Use a subtle noise overlay on the main background to prevent banding and add 'film grain' texture."
+    }
+  },
+  "layout_strategies": {
+    "grid_system": {
+      "marketing": "The Tetris Grid (Mode A) - Asymmetrical, artistic, overlapping.",
+      "listing": "The Bento Grid (Mode B) - Dense, data-rich, but with breathing room.",
+      "detail": "Magazine Layout - Sticky sidebar for booking, scrolling content for details."
+    },
+    "spacing": {
+      "scale": "2x standard. Use p-8, p-12, p-24.",
+      "containers": "p-6 or p-8 internal padding for bordered containers."
+    },
+    "alignment": {
+      "text": "Left-aligned for readability. Center ONLY for short hero headlines.",
+      "optical": "Add padding-right: 4px to buttons with left icons."
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8 rounded-none uppercase tracking-widest text-xs font-bold transition-all duration-300",
+      "secondary": "bg-transparent border border-white/20 text-foreground hover:bg-white/5 h-12 px-8 rounded-none uppercase tracking-widest text-xs font-bold transition-all duration-300",
+      "ghost": "hover:bg-white/5 text-foreground/70 hover:text-foreground"
+    },
+    "cards": {
+      "property": "group relative overflow-hidden rounded-none border-0 bg-card",
+      "feature": "bg-card/50 border border-white/5 p-8 hover:border-[#D4AF37]/30 transition-colors duration-500"
+    },
+    "inputs": {
+      "style": "bg-transparent border-b border-white/20 rounded-none px-0 py-4 focus:border-[#D4AF37] focus:ring-0 transition-colors placeholder:text-muted-foreground/50"
+    },
+    "navigation": {
+      "style": "Fixed, glassmorphism, minimal. Logo left, Links center, CTA right."
+    }
+  },
+  "motion": {
+    "transitions": "transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+    "scroll": "Use 'lenis' for smooth scrolling momentum.",
+    "micro_interactions": "Buttons scale 0.98 on click. Links have an underline that grows from left to right on hover."
+  },
+  "media": {
+    "image_urls": {
+      "hero": [
+        "https://images.unsplash.com/photo-1672226405717-697c84f48f9e?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1596142332133-327e2a0ff006?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ],
+      "interiors": [
+        "https://images.unsplash.com/photo-1678686425633-84fc103e2727?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1769153998613-f3be8d6c3500?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1724582586470-85422853ad61?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ],
+      "lifestyle": [
+        "https://images.unsplash.com/photo-1760139927409-7b6e98d53368?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1760681554241-be45007dcea4?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ]
+    },
+    "icons": "Phosphor Icons (Light weight) for UI. Iconoir for features."
+  },
+  "universal_guidelines": [
+    "Dark Mode is the ONLY mode. Do not implement a light toggle unless critical.",
+    "Use 'data-testid' on all interactive elements.",
+    "No generic 'Inter' font. Use Playfair Display for all Headings.",
+    "No rounded corners on buttons or inputs. Sharp edges = Luxury.",
+    "Images must have a subtle overlay (bg-black/20) to ensure text readability.",
+    "Use 'sonner' for toasts.",
+    "Use 'lucide-react' or 'phosphor-icons' for icons."
+  ],
+  "instructions_to_main_agent": "You are building a 'Dark Luxury' vacation rental platform. Think 'Aman Resorts' meets 'Architectural Digest'. Your goal is to make the user feel wealthier just by looking at the site. Prioritize mood, negative space, and high-end typography over density. Use the provided image URLs for placeholders. Implement the 'Jewel & Luxury' color palette immediately in tailwind.config.js."
+}
