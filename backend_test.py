@@ -321,7 +321,7 @@ def main():
         ("Seed Demo Data", tester.test_seed_data),
         ("Admin Login", tester.test_admin_login),
         ("User Registration", tester.test_user_registration),
-        ("Get Properties", tester.test_properties),
+        ("Get Properties", tester.test_get_properties),
         ("Get Property Detail", tester.test_get_property_detail),
         ("Property Filters", tester.test_property_filters),
         ("Price Calculation", tester.test_price_calculation),
