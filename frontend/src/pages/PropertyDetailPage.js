@@ -180,14 +180,49 @@ export const PropertyDetailPage = () => {
       : `Hi! I'm interested in ${translation.title}. I'd like more information.`
   );
 
+  // Upgrade image URL resolution for the full-screen hero gallery.
+  // - Unsplash: rewrite/add `?w=2400&q=85&auto=format&fit=crop` so the image isn't upscaled.
+  // - Backend-served images (/api/property-images/...): prefix with BACKEND_URL to make them absolute.
+  // - Other URLs: leave as-is.
+  const heroImageUrl = (src) => {
+    if (!src) return '';
+    if (src.startsWith('/api/')) return `${BACKEND_URL}${src}`;
+    if (src.includes('images.unsplash.com')) {
+      try {
+        const u = new URL(src);
+        u.searchParams.set('w', '2400');
+        u.searchParams.set('q', '85');
+        u.searchParams.set('auto', 'format');
+        u.searchParams.set('fit', 'crop');
+        return u.toString();
+      } catch (e) {
+        return src;
+      }
+    }
+    if (src.includes('images.pexels.com')) {
+      try {
+        const u = new URL(src);
+        u.searchParams.set('auto', 'compress');
+        u.searchParams.set('cs', 'tinysrgb');
+        u.searchParams.set('w', '2400');
+        return u.toString();
+      } catch (e) {
+        return src;
+      }
+    }
+    return src;
+  };
+
   return (
     <div className="min-h-screen pt-20" data-testid="property-detail-page">
       {/* Image Gallery */}
-      <section className="relative h-[60vh] bg-card" data-testid="property-gallery">
+      <section className="relative h-[60vh] bg-muted overflow-hidden" data-testid="property-gallery">
         <img
-          src={property.images[currentImageIndex]}
+          src={heroImageUrl(property.images[currentImageIndex])}
           alt={translation.title}
           className="w-full h-full object-cover"
+          loading="eager"
+          decoding="async"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/60 to-transparent" />
         
