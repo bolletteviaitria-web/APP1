@@ -99,11 +99,6 @@ export const Navbar = () => {
                     {t('nav.login')}
                   </Button>
                 </Link>
-                <Link to="/register" data-testid="register-link">
-                  <Button className="btn-primary">
-                    {t('nav.register')}
-                  </Button>
-                </Link>
               </div>
             )}
           </div>

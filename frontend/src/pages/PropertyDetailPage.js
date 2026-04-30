@@ -215,48 +215,68 @@ export const PropertyDetailPage = () => {
 
   return (
     <div className="min-h-screen pt-20" data-testid="property-detail-page">
-      {/* Image Gallery */}
-      <section className="relative h-[60vh] bg-muted overflow-hidden" data-testid="property-gallery">
-        <img
-          src={heroImageUrl(property.images[currentImageIndex])}
-          alt={translation.title}
-          className="w-full h-full object-cover"
-          loading="eager"
-          decoding="async"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/60 to-transparent" />
-        
-        {/* Gallery Navigation */}
+      {/* Image Gallery — contained so we never upscale the source */}
+      <section
+        className="relative max-w-7xl mx-auto px-4 lg:px-8 mt-6"
+        data-testid="property-gallery"
+      >
+        <div className="relative aspect-[16/9] bg-muted overflow-hidden">
+          <img
+            src={heroImageUrl(property.images[currentImageIndex])}
+            alt={translation.title}
+            className="w-full h-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/35 to-transparent pointer-events-none" />
+
+          {/* Gallery Navigation */}
+          {property.images.length > 1 && (
+            <>
+              <button
+                onClick={() => setCurrentImageIndex(i => i === 0 ? property.images.length - 1 : i - 1)}
+                className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-foreground p-3 shadow-md transition-colors"
+                data-testid="gallery-prev"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setCurrentImageIndex(i => i === property.images.length - 1 ? 0 : i + 1)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white text-foreground p-3 shadow-md transition-colors"
+                data-testid="gallery-next"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+
+              {/* Counter */}
+              <div className="absolute bottom-4 right-4 bg-foreground/70 text-white text-xs px-3 py-1.5 tracking-wider">
+                {currentImageIndex + 1} / {property.images.length}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Thumbnail strip — extra discoverability of the full gallery */}
         {property.images.length > 1 && (
-          <>
-            <button
-              onClick={() => setCurrentImageIndex(i => i === 0 ? property.images.length - 1 : i - 1)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 glass p-3 hover:bg-white/10 transition-colors"
-              data-testid="gallery-prev"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
-            <button
-              onClick={() => setCurrentImageIndex(i => i === property.images.length - 1 ? 0 : i + 1)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 glass p-3 hover:bg-white/10 transition-colors"
-              data-testid="gallery-next"
-            >
-              <ChevronRight className="w-6 h-6" />
-            </button>
-            
-            {/* Thumbnails */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-              {property.images.map((img, idx) => (
-                <button
-                  key={`thumb-${img}-${idx}`}
-                  onClick={() => setCurrentImageIndex(idx)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    idx === currentImageIndex ? 'bg-primary' : 'bg-white/50 hover:bg-white/80'
-                  }`}
+          <div className="mt-3 grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+            {property.images.slice(0, 8).map((img, idx) => (
+              <button
+                key={`strip-${img}-${idx}`}
+                onClick={() => setCurrentImageIndex(idx)}
+                className={`relative aspect-[4/3] overflow-hidden bg-muted transition-all ${
+                  idx === currentImageIndex ? 'ring-2 ring-primary' : 'opacity-70 hover:opacity-100'
+                }`}
+                data-testid={`gallery-thumb-${idx}`}
+              >
+                <img
+                  src={heroImageUrl(img)}
+                  alt={`${translation.title} ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
                 />
-              ))}
-            </div>
-          </>
+              </button>
+            ))}
+          </div>
         )}
       </section>
 

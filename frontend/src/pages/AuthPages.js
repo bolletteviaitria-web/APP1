@@ -91,13 +91,6 @@ export const LoginPage = () => {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-muted-foreground">
-            {t('auth.noAccount')}{' '}
-            <Link to="/register" className="text-primary hover:underline" data-testid="register-link">
-              {t('auth.register')}
-            </Link>
-          </p>
-
           {/* Demo Credentials */}
           <div className="mt-6 p-4 bg-card border border-border/60 text-sm">
             <p className="text-muted-foreground mb-2">Demo Admin:</p>

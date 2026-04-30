@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import {
   LayoutDashboard, Building, Calendar, MessageSquare, Settings,
   Users, Euro, Clock, ArrowUpRight, Check, X, Edit, Trash2, Plus,
-  RefreshCw, ExternalLink, Link2, FileText, Download, Copy
+  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -32,10 +32,15 @@ const resolveImageUrl = (src) => {
 };
 
 export const AdminDashboard = () => {
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { user, isAdmin, loading: authLoading, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const navigate = useNavigate();
+
+  const handleAdminLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
@@ -214,9 +219,14 @@ export const AdminDashboard = () => {
     <div className="min-h-screen pt-20" data-testid="admin-dashboard">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-[calc(100vh-5rem)] bg-card border-r border-border/40 p-6" data-testid="admin-sidebar">
-          <h2 className="text-xl font-display font-medium mb-6">Admin</h2>
-          <nav className="space-y-2">
+        <aside className="w-64 min-h-[calc(100vh-5rem)] bg-card border-r border-border/40 p-6 flex flex-col" data-testid="admin-sidebar">
+          <div className="mb-6">
+            <h2 className="text-xl font-display font-medium">Admin</h2>
+            {user?.full_name && (
+              <p className="text-xs text-muted-foreground mt-1 truncate">{user.full_name}</p>
+            )}
+          </div>
+          <nav className="space-y-2 flex-1">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -224,7 +234,7 @@ export const AdminDashboard = () => {
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                   activeTab === tab.id
                     ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-white/5 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
                 data-testid={`admin-tab-${tab.id}`}
               >
@@ -233,6 +243,26 @@ export const AdminDashboard = () => {
               </button>
             ))}
           </nav>
+
+          {/* Footer actions: torna al sito + esci */}
+          <div className="pt-6 mt-6 border-t border-border/40 space-y-2">
+            <Link
+              to="/"
+              className="w-full flex items-center gap-3 px-4 py-3 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              data-testid="admin-back-to-site"
+            >
+              <Home className="w-5 h-5" />
+              {lang === 'it' ? 'Torna al sito' : 'Back to site'}
+            </Link>
+            <button
+              onClick={handleAdminLogout}
+              className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 transition-colors"
+              data-testid="admin-logout-btn"
+            >
+              <LogOut className="w-5 h-5" />
+              {lang === 'it' ? 'Esci' : 'Log out'}
+            </button>
+          </div>
         </aside>
 
         {/* Main Content */}
