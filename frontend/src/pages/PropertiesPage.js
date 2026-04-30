@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { Search, X } from 'lucide-react';
@@ -12,6 +12,7 @@ const API = `${BACKEND_URL}/api`;
 export const PropertiesPage = () => {
   const { t, i18n } = useTranslation();
   const [properties, setProperties] = useState([]);
+  const [allProperties, setAllProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     city: '',
@@ -21,8 +22,30 @@ export const PropertiesPage = () => {
   const lang = i18n.language;
 
   useEffect(() => {
-    fetchProperties();
+    // Initial: fetch unfiltered list once to populate the city dropdown
+    (async () => {
+      try {
+        const res = await axios.get(`${API}/properties`);
+        setAllProperties(res.data);
+        setProperties(res.data);
+      } catch (e) {
+        console.error('Error fetching properties:', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
+
+  // Cities dropdown — alphabetically unique from the full property list
+  const cities = useMemo(() => {
+    const set = new Set(
+      allProperties
+        .map((p) => p.location?.city)
+        .filter(Boolean)
+        .map((c) => c.trim())
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'it'));
+  }, [allProperties]);
 
   const fetchProperties = async (searchFilters = {}) => {
     setLoading(true);
@@ -75,13 +98,19 @@ export const PropertiesPage = () => {
                 <label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block">
                   {t('properties.filter.city')}
                 </label>
-                <Input
+                <select
                   value={filters.city}
                   onChange={(e) => setFilters({ ...filters, city: e.target.value })}
-                  placeholder="Porto Cervo, Amalfi..."
-                  className="input-luxury border rounded-none bg-transparent"
+                  className="w-full bg-transparent border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary/50"
                   data-testid="filter-city"
-                />
+                >
+                  <option value="" className="bg-card">
+                    {lang === 'it' ? 'Tutte le città' : 'All cities'}
+                  </option>
+                  {cities.map((c) => (
+                    <option key={c} value={c} className="bg-card">{c}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs uppercase tracking-wider text-muted-foreground mb-2 block">

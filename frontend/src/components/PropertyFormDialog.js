@@ -103,27 +103,60 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
   }));
 
   const handleUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error(tt('File troppo grande (max 10MB)', 'File too large (max 10MB)'));
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    if (files.length > 5) {
+      toast.error(tt('Massimo 5 foto alla volta', 'Max 5 photos at a time'));
+      e.target.value = '';
       return;
     }
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await axios.post(`${API}/admin/properties/upload-image`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setForm((f) => ({ ...f, images: [...f.images, res.data.url] }));
-      toast.success(tt('Immagine caricata', 'Image uploaded'));
-    } catch (err) {
-      toast.error(err.response?.data?.detail || tt('Upload fallito', 'Upload failed'));
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Pre-validate sizes
+    for (const f of files) {
+      if (f.size > 10 * 1024 * 1024) {
+        toast.error(tt(`"${f.name}" è troppo grande (max 10MB)`, `"${f.name}" is too large (max 10MB)`));
+        e.target.value = '';
+        return;
+      }
     }
+
+    setUploading(true);
+    let succeeded = 0;
+    let failed = 0;
+    const newUrls = [];
+
+    // Upload in parallel for speed
+    const results = await Promise.all(files.map(async (file) => {
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await axios.post(`${API}/admin/properties/upload-image`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return { ok: true, url: res.data.url };
+      } catch (err) {
+        console.error('Upload failed for', file.name, err);
+        return { ok: false, name: file.name, msg: err.response?.data?.detail || err.message };
+      }
+    }));
+
+    for (const r of results) {
+      if (r.ok) { newUrls.push(r.url); succeeded++; } else { failed++; }
+    }
+
+    if (newUrls.length) {
+      setForm((f) => ({ ...f, images: [...f.images, ...newUrls] }));
+    }
+    if (succeeded && !failed) {
+      toast.success(tt(`${succeeded} foto caricate`, `${succeeded} photos uploaded`));
+    } else if (succeeded && failed) {
+      toast.warning(tt(`${succeeded} caricate, ${failed} fallite`, `${succeeded} uploaded, ${failed} failed`));
+    } else {
+      toast.error(tt('Caricamento fallito', 'Upload failed'));
+    }
+
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const addImageUrl = () => {
@@ -351,12 +384,13 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
                 ref={fileInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/heic"
+                multiple
                 onChange={handleUpload}
                 className="hidden"
                 data-testid="form-image-file"
               />
               <Button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="btn-primary" data-testid="form-image-upload-btn">
-                {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tt('Caricamento\u2026', 'Uploading\u2026')}</> : <><Upload className="w-4 h-4 mr-2" />{tt('Carica foto', 'Upload photo')}</>}
+                {uploading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tt('Caricamento\u2026', 'Uploading\u2026')}</> : <><Upload className="w-4 h-4 mr-2" />{tt('Carica foto (max 5)', 'Upload photos (max 5)')}</>}
               </Button>
               <div className="flex-1 flex gap-2">
                 <Input value={imageUrlInput} onChange={(e) => setImageUrlInput(e.target.value)} placeholder={tt('o incolla URL pubblico', 'or paste public URL')} data-testid="form-image-url" />

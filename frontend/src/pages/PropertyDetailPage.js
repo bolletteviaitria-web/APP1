@@ -344,6 +344,70 @@ export const PropertyDetailPage = () => {
               </div>
             </div>
 
+            {/* Location / Map */}
+            <div data-testid="property-location-map">
+              <h2 className="text-2xl font-display font-medium mb-3">
+                {lang === 'it' ? 'Posizione' : 'Location'}
+              </h2>
+              <div className="flex items-start gap-2 text-muted-foreground mb-4">
+                <MapPin className="w-4 h-4 mt-1 shrink-0 text-primary" />
+                <div>
+                  {property.location.address && (
+                    <p className="text-foreground">{property.location.address}</p>
+                  )}
+                  <p className="text-sm">
+                    {property.location.city}{property.location.region ? `, ${property.location.region}` : ''}{property.location.country ? `, ${property.location.country}` : ''}
+                  </p>
+                </div>
+              </div>
+              {(() => {
+                const lat = Number(property.location.lat);
+                const lng = Number(property.location.lng);
+                const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng) && (lat !== 0 || lng !== 0);
+                const query = hasCoords
+                  ? `${lat},${lng}`
+                  : encodeURIComponent([property.location.address, property.location.city, property.location.region, property.location.country].filter(Boolean).join(', '));
+                const delta = 0.01;
+                const bbox = hasCoords
+                  ? `${lng - delta}%2C${lat - delta}%2C${lng + delta}%2C${lat + delta}`
+                  : null;
+                const embedSrc = hasCoords
+                  ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
+                  : null;
+                return (
+                  <div className="bg-muted border border-border/60 overflow-hidden">
+                    {embedSrc ? (
+                      <iframe
+                        title="map"
+                        src={embedSrc}
+                        className="w-full aspect-[16/9]"
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    ) : (
+                      <div className="aspect-[16/9] flex items-center justify-center text-sm text-muted-foreground p-6 text-center">
+                        {lang === 'it' ? 'Coordinate non ancora impostate per questa proprietà' : 'Coordinates not yet set for this property'}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 text-xs">
+                      <span className="text-muted-foreground">
+                        {lang === 'it' ? 'L\u2019indirizzo esatto viene fornito dopo la prenotazione.' : 'The exact address is shared after booking.'}
+                      </span>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${query}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1"
+                        data-testid="open-in-maps"
+                      >
+                        {lang === 'it' ? 'Apri in Google Maps' : 'Open in Google Maps'}
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             {/* Reviews */}
             {reviews.length > 0 && (
               <div data-testid="property-reviews">

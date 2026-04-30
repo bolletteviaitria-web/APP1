@@ -20,8 +20,8 @@ const resources = {
       "hero.cta": "Esplora le Case",
       
       // Properties
-      "properties.title": "Le Nostre Proprietà",
-      "properties.subtitle": "Collezione esclusiva di residenze selezionate",
+      "properties.title": "Le Nostre Case",
+      "properties.subtitle": "Una piccola selezione di case curate, pulite e pronte ad accoglierti",
       "properties.guests": "ospiti",
       "properties.bedrooms": "camere",
       "properties.bathrooms": "bagni",
@@ -79,7 +79,7 @@ const resources = {
       "contact.success": "Messaggio inviato con successo!",
       
       // Footer
-      "footer.tagline": "Esperienze di lusso in case vacanze selezionate in Italia",
+      "footer.tagline": "Case vacanza in Italia, curate con attenzione e sempre pulite. Comfort autentico per il tuo soggiorno.",
       "footer.quickLinks": "Link Rapidi",
       "footer.legal": "Legale",
       "footer.privacy": "Privacy Policy",
