@@ -1,136 +1,163 @@
 {
-  "identity": {
-    "name": "E1",
-    "archetype": "Jewel & Luxury",
-    "mission": "Create a cinematic, exclusive vacation rental platform that feels like a private club, not a booking site."
+  "project": "TerracitoAppartments",
+  "domain": "Luxury Vacation Rentals / E-commerce Booking",
+  "theme": "Light",
+  "archetype": "Archetype 1 (Organic & Earthy) - Mediterranean Luxury Variant",
+  "rationale": "The platform is shifting from a dark/moody 'Jewel & Luxury' theme to a bright, sun-drenched, elegant Mediterranean style. This evokes a 'seaside villa' feel, building trust and conveying premium vacation experiences through natural light, terracotta warmth, olive hues, and crisp sand whites. We maintain the high-end appeal of Archetype 5 through sophisticated typography, generous spacing, and rich cinematic imagery.",
+  "colors": {
+    "description": "A light and luminous palette based on Mediterranean nature: creamy sand background, terracotta primary actions, soft olive/sage secondary accents, and deep charcoal/navy for highly readable text.",
+    "css_variables": {
+      "root": {
+        "--background": "42 33% 96%",
+        "--foreground": "222 25% 15%",
+        "--card": "0 0% 100%",
+        "--card-foreground": "222 25% 15%",
+        "--popover": "0 0% 100%",
+        "--popover-foreground": "222 25% 15%",
+        "--primary": "21 65% 55%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "65 14% 85%",
+        "--secondary-foreground": "222 25% 15%",
+        "--muted": "42 20% 90%",
+        "--muted-foreground": "215 15% 45%",
+        "--accent": "195 40% 85%",
+        "--accent-foreground": "222 25% 15%",
+        "--border": "42 20% 85%",
+        "--input": "42 20% 85%",
+        "--ring": "21 65% 55%",
+        "--radius": "0rem"
+      },
+      "dark": {
+        "--background": "222 25% 15%",
+        "--foreground": "42 33% 96%",
+        "--card": "222 25% 12%",
+        "--card-foreground": "42 33% 96%",
+        "--popover": "222 25% 12%",
+        "--popover-foreground": "42 33% 96%",
+        "--primary": "21 65% 55%",
+        "--primary-foreground": "0 0% 100%",
+        "--secondary": "222 15% 25%",
+        "--secondary-foreground": "42 33% 96%",
+        "--muted": "222 15% 25%",
+        "--muted-foreground": "215 15% 70%",
+        "--accent": "222 15% 25%",
+        "--accent-foreground": "42 33% 96%",
+        "--border": "222 15% 25%",
+        "--input": "222 15% 25%",
+        "--ring": "21 65% 55%"
+      }
+    },
+    "tailwind_config_extensions": {
+      "colors": {
+        "terracotta": {
+          "50": "#fcf5f3",
+          "100": "#f8e9e4",
+          "200": "#f3d5cc",
+          "300": "#ebb6a6",
+          "400": "#e18e76",
+          "500": "#d9734e",
+          "600": "#ca5833",
+          "700": "#a94526",
+          "800": "#873922",
+          "900": "#6d3120"
+        },
+        "sand": {
+          "50": "#fbfbf9",
+          "100": "#f6f4f0",
+          "200": "#ebe6dc",
+          "300": "#ded3c2",
+          "400": "#cdbda3",
+          "500": "#beaa8b",
+          "600": "#b19776",
+          "700": "#947b5f",
+          "800": "#786550",
+          "900": "#625343"
+        }
+      }
+    }
   },
   "typography": {
     "fonts": {
-      "heading": "Playfair Display",
+      "heading": "Cormorant Garamond",
       "body": "Manrope",
-      "mono": "JetBrains Mono"
+      "import_url": "@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Manrope:wght@300;400;500;600&display=swap');"
     },
-    "weights": {
-      "heading": "font-medium",
-      "body": "font-light"
-    },
-    "tracking": {
-      "heading": "tracking-tight",
-      "overline": "tracking-[0.2em]"
-    },
-    "installation": "import '@fontsource/playfair-display'; import '@fontsource/manrope'; import '@fontsource/jetbrains-mono';"
-  },
-  "colors": {
-    "palette": {
-      "background": "#020408",
-      "foreground": "#F8FAFC",
-      "card": "#0B0F17",
-      "card_foreground": "#E2E8F0",
-      "popover": "#0B0F17",
-      "popover_foreground": "#E2E8F0",
-      "primary": "#D4AF37",
-      "primary_foreground": "#020408",
-      "secondary": "#1E293B",
-      "secondary_foreground": "#F8FAFC",
-      "muted": "#1E293B",
-      "muted_foreground": "#94A3B8",
-      "accent": "#1E293B",
-      "accent_foreground": "#D4AF37",
-      "destructive": "#7F1D1D",
-      "destructive_foreground": "#F8FAFC",
-      "border": "#1E293B",
-      "input": "#1E293B",
-      "ring": "#D4AF37"
-    },
-    "gradients": {
-      "gold_rush": "bg-gradient-to-r from-[#D4AF37] to-[#FCD34D]",
-      "midnight_bloom": "bg-gradient-to-b from-[#020408] to-[#0B0F17]"
-    },
-    "rules": [
-      "Never use pure black (#000000). Use #020408 (Obsidian Blue).",
-      "Primary color (#D4AF37 - Gold) is for CTAs and Accents ONLY.",
-      "Text on dark backgrounds must be #F8FAFC (Off-white) or #E2E8F0, never pure white."
-    ]
-  },
-  "visual_enhancers": {
-    "glassmorphism": {
-      "base": "bg-[#0B0F17]/70 backdrop-blur-xl border border-white/10 shadow-2xl",
-      "usage": "Sticky headers, floating booking cards, toast notifications."
-    },
-    "borders": {
-      "subtle": "border border-white/5",
-      "active": "border border-[#D4AF37]/50"
-    },
-    "shadows": {
-      "glow": "shadow-[0_0_40px_-10px_rgba(212,175,55,0.3)]"
-    },
-    "textures": {
-      "noise": "Use a subtle noise overlay on the main background to prevent banding and add 'film grain' texture."
+    "scale": {
+      "h1": "text-5xl sm:text-6xl tracking-tighter font-light font-serif",
+      "h2": "text-3xl sm:text-4xl tracking-tight font-serif text-foreground/90",
+      "h3": "text-2xl sm:text-3xl tracking-tight font-serif",
+      "h4": "text-xl sm:text-2xl font-serif",
+      "body": "text-base font-sans text-muted-foreground leading-relaxed",
+      "overline": "text-xs tracking-[0.2em] uppercase font-sans text-terracotta-600 font-medium"
     }
   },
-  "layout_strategies": {
-    "grid_system": {
-      "marketing": "The Tetris Grid (Mode A) - Asymmetrical, artistic, overlapping.",
-      "listing": "The Bento Grid (Mode B) - Dense, data-rich, but with breathing room.",
-      "detail": "Magazine Layout - Sticky sidebar for booking, scrolling content for details."
-    },
-    "spacing": {
-      "scale": "2x standard. Use p-8, p-12, p-24.",
-      "containers": "p-6 or p-8 internal padding for bordered containers."
-    },
-    "alignment": {
-      "text": "Left-aligned for readability. Center ONLY for short hero headlines.",
-      "optical": "Add padding-right: 4px to buttons with left icons."
+  "layout_and_spacing": {
+    "philosophy": "Generous Spacing & The Bento Grid. Use p-8, p-12, p-16 to give elements breathing room. Implement Mode A (Tetris Grid) for marketing sections to build visual tension. Avoid 'Bootstrap' symmetry.",
+    "patterns": {
+      "hero": "Asymmetrical layout. Large cinematic image on one side or overlaid with bg-white/30 crystal glassmorphism for text readability. Heavy use of negative space.",
+      "property_cards": "Flat design, no heavy drop-shadows. Sharp edges (radius-0) or maximum 4px (radius-sm). Thin 1px borders using var(--border) with subtle hover scale (-translate-y-1) and transition.",
+      "navbar": "Sticky header. Uses 'Crystal Glass' approach: backdrop-blur-xl bg-background/70, 1px subtle bottom border border-border/40. Allows scrolling content to blur beautifully underneath.",
+      "admin_dashboard": "Mode B (Control Room). High density, use pure white cards on sand background. Sharp borders, dense tabular data layout, highly accessible forms."
     }
   },
   "components": {
     "buttons": {
-      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8 rounded-none uppercase tracking-widest text-xs font-bold transition-all duration-300",
-      "secondary": "bg-transparent border border-white/20 text-foreground hover:bg-white/5 h-12 px-8 rounded-none uppercase tracking-widest text-xs font-bold transition-all duration-300",
-      "ghost": "hover:bg-white/5 text-foreground/70 hover:text-foreground"
-    },
-    "cards": {
-      "property": "group relative overflow-hidden rounded-none border-0 bg-card",
-      "feature": "bg-card/50 border border-white/5 p-8 hover:border-[#D4AF37]/30 transition-colors duration-500"
+      "primary": "bg-primary text-primary-foreground hover:bg-terracotta-600 rounded-none px-8 py-4 font-sans tracking-wide transition-all shadow-sm",
+      "ghost": "hover:bg-sand-200 text-foreground rounded-none transition-all",
+      "outline": "border border-border hover:border-foreground transition-colors rounded-none"
     },
     "inputs": {
-      "style": "bg-transparent border-b border-white/20 rounded-none px-0 py-4 focus:border-[#D4AF37] focus:ring-0 transition-colors placeholder:text-muted-foreground/50"
+      "style": "Elegant thin borders. border-b-only or full thin borders (border-border). Focus states must use focus:ring-1 focus:ring-primary focus:border-primary. No heavy thick rings."
     },
-    "navigation": {
-      "style": "Fixed, glassmorphism, minimal. Logo left, Links center, CTA right."
+    "badges": {
+      "style": "bg-secondary text-secondary-foreground text-xs uppercase tracking-wider px-3 py-1 rounded-full font-medium"
     }
   },
   "motion": {
-    "transitions": "transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-    "scroll": "Use 'lenis' for smooth scrolling momentum.",
-    "micro_interactions": "Buttons scale 0.98 on click. Links have an underline that grows from left to right on hover."
+    "philosophy": "Elegant micro-animations. Nothing bouncy or overly playful.",
+    "hover_states": "Soft transitions (duration-300 ease-out). Subtle scales for images in cards (group-hover:scale-105).",
+    "page_transitions": "Smooth fade-ins and staggered list entrances via Framer Motion."
   },
   "media": {
-    "image_urls": {
-      "hero": [
-        "https://images.unsplash.com/photo-1672226405717-697c84f48f9e?crop=entropy&cs=srgb&fm=jpg&q=85",
-        "https://images.unsplash.com/photo-1596142332133-327e2a0ff006?crop=entropy&cs=srgb&fm=jpg&q=85"
-      ],
-      "interiors": [
-        "https://images.unsplash.com/photo-1678686425633-84fc103e2727?crop=entropy&cs=srgb&fm=jpg&q=85",
-        "https://images.unsplash.com/photo-1769153998613-f3be8d6c3500?crop=entropy&cs=srgb&fm=jpg&q=85",
-        "https://images.unsplash.com/photo-1724582586470-85422853ad61?crop=entropy&cs=srgb&fm=jpg&q=85"
-      ],
-      "lifestyle": [
-        "https://images.unsplash.com/photo-1760139927409-7b6e98d53368?crop=entropy&cs=srgb&fm=jpg&q=85",
-        "https://images.unsplash.com/photo-1760681554241-be45007dcea4?crop=entropy&cs=srgb&fm=jpg&q=85"
-      ]
-    },
-    "icons": "Phosphor Icons (Light weight) for UI. Iconoir for features."
+    "guidelines": "Images must be high-res, showing Mediterranean architecture, natural light, and luxury interiors. Avoid generic AI slop. Keep hero overlay max bg-black/30 or use gradient to preserve image clarity.",
+    "image_urls": [
+      {
+        "category": "hero_background",
+        "description": "Cinematic wide-angle photo of luxury Mediterranean villa terrace at golden hour. Warm terracotta tiles, infinity pool.",
+        "url": "https://static.prod-images.emergentagent.com/jobs/b1c98317-ff02-4c84-be87-7bd3f896d882/images/b6d8b78d89aa333e03f80eb452525333c980d414e31b32554da2d2bc1bd16242.png"
+      },
+      {
+        "category": "abstract_texture",
+        "description": "Soft abstract background blending cream, sand, and subtle terracotta for layered website sections.",
+        "url": "https://static.prod-images.emergentagent.com/jobs/b1c98317-ff02-4c84-be87-7bd3f896d882/images/d02ad170e23e86fa7543d5038d3c73b1d5a795bd085f9185664e83ea1d8fb78c.png"
+      },
+      {
+        "category": "property_exterior",
+        "description": "Bright exterior of an Italian villa with open doors revealing a stunning sea view.",
+        "url": "https://images.pexels.com/photos/35438897/pexels-photo-35438897.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      },
+      {
+        "category": "property_exterior_2",
+        "description": "Stunning ironwork gate at the entrance of an Italian villa, classic architectural beauty.",
+        "url": "https://images.pexels.com/photos/35438895/pexels-photo-35438895.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      },
+      {
+        "category": "property_interior",
+        "description": "Interior of modern light bedroom with pillows and blanket on bed under lamps next to pouf near glass wall with curtain",
+        "url": "https://images.pexels.com/photos/6782578/pexels-photo-6782578.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      },
+      {
+        "category": "property_interior_2",
+        "description": "Luxurious bedroom showcasing elegant decor with a classic touch, featuring a wooden floor.",
+        "url": "https://images.pexels.com/photos/20705876/pexels-photo-20705876.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+      }
+    ]
   },
-  "universal_guidelines": [
-    "Dark Mode is the ONLY mode. Do not implement a light toggle unless critical.",
-    "Use 'data-testid' on all interactive elements.",
-    "No generic 'Inter' font. Use Playfair Display for all Headings.",
-    "No rounded corners on buttons or inputs. Sharp edges = Luxury.",
-    "Images must have a subtle overlay (bg-black/20) to ensure text readability.",
-    "Use 'sonner' for toasts.",
-    "Use 'lucide-react' or 'phosphor-icons' for icons."
-  ],
-  "instructions_to_main_agent": "You are building a 'Dark Luxury' vacation rental platform. Think 'Aman Resorts' meets 'Architectural Digest'. Your goal is to make the user feel wealthier just by looking at the site. Prioritize mood, negative space, and high-end typography over density. Use the provided image URLs for placeholders. Implement the 'Jewel & Luxury' color palette immediately in tailwind.config.js."
+  "iconography_and_libraries": {
+    "icons": "lucide-react (already installed) or @phosphor-icons/react (Duotone weight for luxury feel)",
+    "date_picker": "Shadcn Calendar component (no native inputs)",
+    "notifications": "Sonner (with elegant light styling)"
+  },
+  "logo_guideline": "Wordmark 'TerracitoAppartments' using Cormorant Garamond font-semibold, optionally accompanied by a minimal line-art sun or terracotta arch icon on the left.",
+  "testing": "All interactive elements (booking buttons, admin toggles, filters) MUST include 'data-testid' attributes (e.g., 'data-testid=\"book-now-button\"')."
 }
