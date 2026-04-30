@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, Trash2, Upload, Loader2, X, Image as ImageIcon, GripVertical
+  Plus, Trash2, Upload, Loader2, X, Image as ImageIcon, GripVertical, MapPin, Search
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -64,6 +64,7 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [geocoding, setGeocoding] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -95,6 +96,42 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
     translations: { ...f.translations, [l]: { ...f.translations[l], [key]: val } }
   }));
   const setLoc = (key, val) => setForm((f) => ({ ...f, location: { ...f.location, [key]: val } }));
+
+  const handleGeocode = async () => {
+    const { address, city, region, country } = form.location;
+    const query = [address, city, region, country].filter(Boolean).join(', ').trim();
+    if (!query) {
+      toast.error(tt('Compila almeno indirizzo e città', 'Fill in at least address and city'));
+      return;
+    }
+    setGeocoding(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0`;
+      // We use fetch (not axios) to avoid sending our admin Authorization header to a 3rd-party host
+      const res = await fetch(url, {
+        headers: { 'Accept-Language': lang === 'it' ? 'it' : 'en' }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const arr = await res.json();
+      if (!arr.length) {
+        toast.error(tt('Indirizzo non trovato. Prova a essere più specifico.', 'Address not found. Try to be more specific.'));
+        return;
+      }
+      const lat = parseFloat(arr[0].lat);
+      const lng = parseFloat(arr[0].lon);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) {
+        toast.error(tt('Coordinate non valide', 'Invalid coordinates'));
+        return;
+      }
+      setForm((f) => ({ ...f, location: { ...f.location, lat, lng } }));
+      toast.success(tt(`Coordinate trovate: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, `Coordinates found: ${lat.toFixed(5)}, ${lng.toFixed(5)}`));
+    } catch (e) {
+      console.error('Geocoding failed', e);
+      toast.error(tt('Geocodifica fallita. Riprova tra qualche secondo.', 'Geocoding failed. Try again in a moment.'));
+    } finally {
+      setGeocoding(false);
+    }
+  };
   const setPricing = (key, val) => setForm((f) => ({ ...f, pricing: { ...f.pricing, [key]: Number(val) || 0 } }));
 
   const toggleAmenity = (a) => setForm((f) => ({
@@ -307,14 +344,34 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
 
           {/* Location */}
           <section className="space-y-4">
-            <h3 className="font-display text-lg text-primary">{tt('Posizione', 'Location')}</h3>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="font-display text-lg text-primary">{tt('Posizione', 'Location')}</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGeocode}
+                disabled={geocoding}
+                data-testid="form-geocode-btn"
+                className="gap-2"
+              >
+                {geocoding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                {tt('Trova coordinate dall\u2019indirizzo', 'Find coordinates from address')}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {tt(
+                'Compila Indirizzo, Città e Regione poi clicca il pulsante: Lat e Lng vengono riempite automaticamente.',
+                'Fill in Address, City and Region then click the button: Lat and Lng will be filled in automatically.'
+              )}
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input value={form.location.address} onChange={(e) => setLoc('address', e.target.value)} placeholder={tt('Indirizzo', 'Address')} data-testid="form-address" />
               <Input value={form.location.city} onChange={(e) => setLoc('city', e.target.value)} placeholder={tt('Città', 'City')} data-testid="form-city" />
               <Input value={form.location.region} onChange={(e) => setLoc('region', e.target.value)} placeholder={tt('Regione', 'Region')} data-testid="form-region" />
               <Input value={form.location.country} onChange={(e) => setLoc('country', e.target.value)} placeholder={tt('Paese', 'Country')} />
-              <Input type="number" step="any" value={form.location.lat} onChange={(e) => setLoc('lat', e.target.value)} placeholder="Lat" />
-              <Input type="number" step="any" value={form.location.lng} onChange={(e) => setLoc('lng', e.target.value)} placeholder="Lng" />
+              <Input type="number" step="any" value={form.location.lat} onChange={(e) => setLoc('lat', e.target.value)} placeholder="Lat" data-testid="form-lat" />
+              <Input type="number" step="any" value={form.location.lng} onChange={(e) => setLoc('lng', e.target.value)} placeholder="Lng" data-testid="form-lng" />
             </div>
           </section>
 
