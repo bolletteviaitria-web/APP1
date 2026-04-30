@@ -32,8 +32,8 @@ export const Navbar = () => {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3" data-testid="logo-link">
-            <span className="text-2xl font-display font-semibold text-foreground">
-              Vacay<span className="text-primary">Stay</span>
+            <span className="text-2xl font-display font-semibold text-foreground tracking-tight">
+              Terracito<span className="text-primary">Appartments</span>
             </span>
           </Link>
 
@@ -171,8 +171,8 @@ export const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="md:col-span-2">
-            <h3 className="text-2xl font-display font-semibold mb-4">
-              Vacay<span className="text-primary">Stay</span>
+            <h3 className="text-2xl font-display font-semibold mb-4 tracking-tight">
+              Terracito<span className="text-primary">Appartments</span>
             </h3>
             <p className="text-muted-foreground max-w-md">
               {t('footer.tagline')}
@@ -229,7 +229,7 @@ export const Footer = () => {
         </div>
 
         <div className="mt-12 pt-8 border-t border-white/5 text-center text-muted-foreground text-sm">
-          © {currentYear} VacayStay. {t('footer.rights')}
+          © {currentYear} TerracitoAppartments. {t('footer.rights')}
         </div>
       </div>
     </footer>

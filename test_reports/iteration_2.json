@@ -1,0 +1,47 @@
+{
+  "summary": "Comprehensive backend + frontend regression for TerracitoAppartments (rebrand, iCal sync/export, guest ID upload). 23/23 backend pytest passed. All key UI flows pass: rebrand (title/navbar/footer/login demo), admin login, Sync iCal tab with 5 export URLs + add/run/delete feed, Admin bookings FileText 'Documenti Ospite' dialog.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "BookingSuccessPage DocumentUpload render",
+        "issue": "DocumentUpload component only renders when paymentStatus === 'success'. In preview env with placeholder Stripe key (sk_test_emergent), /api/payments/status/{session_id} returns 500 and polling cannot flip state to 'success', so guests never see the upload UI end-to-end. Component wiring is correct (localStorage key 'terracito.last_booking_id' is set in BookingPage before redirect, DocumentUpload has proper testids and posts to /api/bookings/{id}/documents). Backend upload flow fully verified via pytest. Suggest either (a) rendering DocumentUpload when a valid bookingId is present regardless of payment status, or (b) adding a dev-mode bypass, or (c) testing against a real Stripe test session.",
+        "affected_selectors": ["[data-testid='document-upload-card']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Consider decoupling DocumentUpload visibility from paymentStatus so guests can upload ID docs as soon as a booking is created (guests already land on /booking/success after Stripe redirect and have booking_id in localStorage).",
+    "[minor] /api/payments/status/{session_id} returns 500 for non-existent/bogus session_ids — consider returning 404 with a clean payload instead so frontend polling can render a proper 'payment failed' state rather than spamming 500s in console.",
+    "Created 2 TEST_ bookings and several uploaded/soft-deleted documents during testing; no cleanup job exists. Consider adding an admin cleanup or TTL index on booking_documents / bookings where notes startswith 'TEST_'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1492 lines — consider splitting into routers (auth, properties, bookings, ical, documents, admin, payments). Well past the 700-line guideline.",
+    "server.py L555: `del booking_doc['_id']` works only because insert_one mutates the doc to add _id; safer to pass a copy or use `booking_doc.pop('_id', None)`.",
+    "sync_single_feed iCal parsing (L883-886) has a convoluted boolean with `hasattr(start,'date') and not isinstance(start, date) or isinstance(start, datetime)` that relies on operator precedence; worth rewriting for clarity.",
+    "ical-sync POST triggers a synchronous initial sync inside the request handler (L827) — a slow/hanging feed URL will block the admin POST for up to 30s. Consider dispatching via asyncio.create_task and returning immediately.",
+    "No rate-limit / auth on POST /api/bookings/{id}/documents — booking_id is used as access token. Since booking_id is a UUID this is acceptable, but an attacker with leaked booking_id can fill storage with 10MB uploads. Consider per-booking upload count cap."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new pytest suite)"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23)",
+    "frontend": "100% of verifiable flows (rebrand, login, admin sync tab, bookings docs dialog); BookingSuccessPage upload UI not reachable end-to-end due to Stripe sandbox gating, backend endpoints it calls are fully green"
+  },
+  "test_credentials": "Admin: admin@terracitoappartments.com / admin123 (from /app/memory/test_credentials.md). Old admin@vacaystay.com correctly removed (401).",
+  "seed_data_creation": "Created 2 bookings (guest_name UI_TEST and TEST_Guest) and uploaded/soft-deleted several test documents via /api/bookings/{id}/documents. Added+deleted test iCal sync records.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest lives at /app/backend/tests/backend_test.py — run with: pytest /app/backend/tests/backend_test.py -v. All 23 tests currently green. iCal dummy feeds legitimately return 404 — assertion checks last_synced/last_error persistence. The BookingSuccessPage DocumentUpload cannot be exercised via UI without a working Stripe session; verify backend doc endpoints via pytest instead. iCal scheduler (APScheduler AsyncIO) runs every 30 min in-process — don't re-exercise the full run.",
+  "rca of the issue": "No blocking bugs found. The only meaningful UX gap is that DocumentUpload is conditionally rendered behind paymentStatus==='success' which requires a real Stripe roundtrip — see integration_issues."
+}

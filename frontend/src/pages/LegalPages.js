@@ -16,7 +16,7 @@ export const PrivacyPage = () => {
             <>
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">1. Titolare del Trattamento</h2>
-                <p>Il Titolare del trattamento dei dati personali è VacayStay S.r.l., con sede legale in Via Roma 123, 00100 Roma, Italia.</p>
+                <p>Il Titolare del trattamento dei dati personali è TerracitoAppartments S.r.l., con sede legale in Via Roma 123, 00100 Roma, Italia.</p>
               </section>
 
               <section>
@@ -66,14 +66,14 @@ export const PrivacyPage = () => {
 
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">7. Contatti</h2>
-                <p>Per esercitare i tuoi diritti o per informazioni, contattaci a: privacy@vacaystay.com</p>
+                <p>Per esercitare i tuoi diritti o per informazioni, contattaci a: privacy@terracitoappartments.com</p>
               </section>
             </>
           ) : (
             <>
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">1. Data Controller</h2>
-                <p>The Data Controller is VacayStay S.r.l., with registered office at Via Roma 123, 00100 Rome, Italy.</p>
+                <p>The Data Controller is TerracitoAppartments S.r.l., with registered office at Via Roma 123, 00100 Rome, Italy.</p>
               </section>
 
               <section>
@@ -123,7 +123,7 @@ export const PrivacyPage = () => {
 
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">7. Contact</h2>
-                <p>To exercise your rights or for information, contact us at: privacy@vacaystay.com</p>
+                <p>To exercise your rights or for information, contact us at: privacy@terracitoappartments.com</p>
               </section>
             </>
           )}
@@ -153,7 +153,7 @@ export const TermsPage = () => {
             <>
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">1. Oggetto</h2>
-                <p>I presenti Termini e Condizioni regolano l'utilizzo del sito web VacayStay e la prenotazione delle proprietà in esso presenti.</p>
+                <p>I presenti Termini e Condizioni regolano l'utilizzo del sito web TerracitoAppartments e la prenotazione delle proprietà in esso presenti.</p>
               </section>
 
               <section>
@@ -210,7 +210,7 @@ export const TermsPage = () => {
 
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">7. Responsabilità</h2>
-                <p>VacayStay non è responsabile per danni causati da forza maggiore, interruzioni di servizi pubblici o eventi al di fuori del proprio controllo.</p>
+                <p>TerracitoAppartments non è responsabile per danni causati da forza maggiore, interruzioni di servizi pubblici o eventi al di fuori del proprio controllo.</p>
               </section>
 
               <section>
@@ -222,7 +222,7 @@ export const TermsPage = () => {
             <>
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">1. Subject</h2>
-                <p>These Terms and Conditions govern the use of the VacayStay website and the booking of properties listed therein.</p>
+                <p>These Terms and Conditions govern the use of the TerracitoAppartments website and the booking of properties listed therein.</p>
               </section>
 
               <section>
@@ -279,7 +279,7 @@ export const TermsPage = () => {
 
               <section>
                 <h2 className="text-2xl font-display font-medium text-foreground">7. Liability</h2>
-                <p>VacayStay is not liable for damages caused by force majeure, public service interruptions, or events beyond its control.</p>
+                <p>TerracitoAppartments is not liable for damages caused by force majeure, public service interruptions, or events beyond its control.</p>
               </section>
 
               <section>

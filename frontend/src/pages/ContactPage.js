@@ -93,8 +93,8 @@ export const ContactPage = () => {
                   </div>
                   <div>
                     <h4 className="font-medium mb-1">Email</h4>
-                    <a href="mailto:info@vacaystay.com" className="text-muted-foreground hover:text-primary transition-colors">
-                      info@vacaystay.com
+                    <a href="mailto:info@terracitoappartments.com" className="text-muted-foreground hover:text-primary transition-colors">
+                      info@terracitoappartments.com
                     </a>
                   </div>
                 </div>

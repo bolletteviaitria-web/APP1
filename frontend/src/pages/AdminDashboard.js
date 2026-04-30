@@ -7,13 +7,17 @@ import { format } from 'date-fns';
 import {
   LayoutDashboard, Building, Calendar, MessageSquare, Settings,
   Users, Euro, Clock, ArrowUpRight, Check, X, Edit, Trash2, Plus,
-  RefreshCw, ExternalLink
+  RefreshCw, ExternalLink, Link2, FileText, Download, Copy
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '../components/ui/table';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
+} from '../components/ui/dialog';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -30,7 +34,14 @@ export const AdminDashboard = () => {
   const [properties, setProperties] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [syncs, setSyncs] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // iCal sync form
+  const [newSync, setNewSync] = useState({ property_id: '', platform: 'airbnb', ical_url: '' });
+  // Booking docs viewer
+  const [docsBookingId, setDocsBookingId] = useState(null);
+  const [bookingDocs, setBookingDocs] = useState([]);
 
   useEffect(() => {
     if (!authLoading && isAdmin) {
@@ -53,12 +64,89 @@ export const AdminDashboard = () => {
       } else if (activeTab === 'contacts') {
         const res = await axios.get(`${API}/contacts`);
         setContacts(res.data);
+      } else if (activeTab === 'sync') {
+        const [syncRes, propRes] = await Promise.all([
+          axios.get(`${API}/ical-syncs`),
+          axios.get(`${API}/properties?active_only=false`)
+        ]);
+        setSyncs(syncRes.data);
+        setProperties(propRes.data);
       }
     } catch (error) {
       console.error('Fetch error:', error);
       toast.error(t('common.error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createSync = async () => {
+    if (!newSync.property_id || !newSync.ical_url) {
+      toast.error(lang === 'it' ? 'Compila tutti i campi' : 'Fill all fields');
+      return;
+    }
+    try {
+      await axios.post(`${API}/ical-sync`, newSync);
+      toast.success(lang === 'it' ? 'Sincronizzazione creata' : 'Sync created');
+      setNewSync({ property_id: '', platform: 'airbnb', ical_url: '' });
+      fetchData();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const runSync = async (syncId) => {
+    try {
+      const res = await axios.post(`${API}/ical-sync/${syncId}/run`);
+      if (res.data.error) {
+        toast.error(`${lang === 'it' ? 'Errore' : 'Error'}: ${res.data.error}`);
+      } else {
+        toast.success(`${res.data.events_imported} ${lang === 'it' ? 'eventi importati' : 'events imported'}`);
+      }
+      fetchData();
+    } catch (e) {
+      toast.error(t('common.error'));
+    }
+  };
+
+  const deleteSync = async (syncId) => {
+    if (!window.confirm(lang === 'it' ? 'Eliminare questa sincronizzazione?' : 'Delete this sync?')) return;
+    try {
+      await axios.delete(`${API}/ical-sync/${syncId}`);
+      toast.success(lang === 'it' ? 'Eliminata' : 'Deleted');
+      fetchData();
+    } catch (e) {
+      toast.error(t('common.error'));
+    }
+  };
+
+  const copyExportUrl = (propertyId) => {
+    const url = `${BACKEND_URL}/api/ical-export/${propertyId}.ics`;
+    navigator.clipboard.writeText(url);
+    toast.success(lang === 'it' ? 'URL copiato' : 'URL copied');
+  };
+
+  const openBookingDocs = async (bookingId) => {
+    setDocsBookingId(bookingId);
+    try {
+      const res = await axios.get(`${API}/bookings/${bookingId}/documents`);
+      setBookingDocs(res.data);
+    } catch (e) {
+      setBookingDocs([]);
+    }
+  };
+
+  const downloadDoc = async (docId, filename) => {
+    try {
+      const res = await axios.get(`${API}/admin/documents/${docId}/download`, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      toast.error(t('common.error'));
     }
   };
 
@@ -89,6 +177,7 @@ export const AdminDashboard = () => {
     { id: 'properties', label: t('admin.properties'), icon: Building },
     { id: 'bookings', label: t('admin.bookings'), icon: Calendar },
     { id: 'contacts', label: t('admin.contacts'), icon: MessageSquare },
+    { id: 'sync', label: lang === 'it' ? 'Sync iCal' : 'iCal Sync', icon: Link2 },
   ];
 
   return (
@@ -360,6 +449,16 @@ export const AdminDashboard = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openBookingDocs(booking.id)}
+                              className="text-muted-foreground hover:text-primary"
+                              title={lang === 'it' ? 'Documenti' : 'Documents'}
+                              data-testid={`view-docs-${booking.id}`}
+                            >
+                              <FileText className="w-4 h-4" />
+                            </Button>
                             {booking.status === 'pending' && (
                               <>
                                 <Button
@@ -449,7 +548,216 @@ export const AdminDashboard = () => {
               </div>
             </div>
           )}
+
+          {/* iCal Sync Tab */}
+          {activeTab === 'sync' && (
+            <div className="space-y-6" data-testid="sync-content">
+              <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-display font-medium">
+                  {lang === 'it' ? 'Sincronizzazione iCal' : 'iCal Synchronization'}
+                </h1>
+                <Button onClick={fetchData} variant="ghost" size="icon">
+                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+
+              <p className="text-sm text-muted-foreground max-w-3xl">
+                {lang === 'it'
+                  ? 'Aggiungi qui i feed iCal di Airbnb e Booking. Vengono aggiornati automaticamente ogni 30 minuti. Usa l\u2019URL di esportazione per pubblicare le tue prenotazioni dirette su Airbnb/Booking.'
+                  : 'Add Airbnb / Booking iCal feeds here. They are pulled automatically every 30 minutes. Use the export URL to publish your direct bookings to Airbnb / Booking.'}
+              </p>
+
+              {/* Export URLs per property */}
+              <div className="glass p-6">
+                <h3 className="text-lg font-display font-medium mb-4">
+                  {lang === 'it' ? 'URL di Esportazione (per Airbnb / Booking)' : 'Export URL (for Airbnb / Booking)'}
+                </h3>
+                <div className="space-y-2">
+                  {properties.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-white/5 last:border-0">
+                      <span className="font-medium truncate">
+                        {p.translations?.[lang]?.title || p.translations?.it?.title || p.slug}
+                      </span>
+                      <code className="text-xs text-muted-foreground bg-background/40 px-2 py-1 truncate flex-1 max-w-md">
+                        /api/ical-export/{p.id}.ics
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => copyExportUrl(p.id)}
+                        data-testid={`copy-export-${p.id}`}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add new sync */}
+              <div className="glass p-6 space-y-4" data-testid="add-sync-form">
+                <h3 className="text-lg font-display font-medium">
+                  {lang === 'it' ? 'Aggiungi Feed iCal' : 'Add iCal Feed'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <select
+                    value={newSync.property_id}
+                    onChange={(e) => setNewSync({ ...newSync, property_id: e.target.value })}
+                    className="bg-transparent border border-white/10 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+                    data-testid="sync-property-select"
+                  >
+                    <option value="" className="bg-card">
+                      {lang === 'it' ? 'Seleziona proprietà' : 'Select property'}
+                    </option>
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id} className="bg-card">
+                        {p.translations?.[lang]?.title || p.translations?.it?.title || p.slug}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={newSync.platform}
+                    onChange={(e) => setNewSync({ ...newSync, platform: e.target.value })}
+                    className="bg-transparent border border-white/10 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+                    data-testid="sync-platform-select"
+                  >
+                    <option value="airbnb" className="bg-card">Airbnb</option>
+                    <option value="booking" className="bg-card">Booking.com</option>
+                    <option value="vrbo" className="bg-card">Vrbo</option>
+                    <option value="other" className="bg-card">{lang === 'it' ? 'Altro' : 'Other'}</option>
+                  </select>
+                  <Input
+                    value={newSync.ical_url}
+                    onChange={(e) => setNewSync({ ...newSync, ical_url: e.target.value })}
+                    placeholder="https://..../calendar.ics"
+                    className="md:col-span-2 bg-transparent border-white/10"
+                    data-testid="sync-url-input"
+                  />
+                </div>
+                <Button onClick={createSync} className="btn-primary" data-testid="add-sync-btn">
+                  <Plus className="w-4 h-4 mr-2" />
+                  {lang === 'it' ? 'Aggiungi' : 'Add'}
+                </Button>
+              </div>
+
+              {/* Existing syncs table */}
+              <div className="glass overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{lang === 'it' ? 'Proprietà' : 'Property'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Piattaforma' : 'Platform'}</TableHead>
+                      <TableHead>URL</TableHead>
+                      <TableHead>{lang === 'it' ? 'Ultima Sync' : 'Last Sync'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Stato' : 'Status'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Azioni' : 'Actions'}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {syncs.map((s) => {
+                      const prop = properties.find((p) => p.id === s.property_id);
+                      const propTitle = prop?.translations?.[lang]?.title || prop?.translations?.it?.title || s.property_id;
+                      return (
+                        <TableRow key={s.id} data-testid={`sync-row-${s.id}`}>
+                          <TableCell className="font-medium">{propTitle}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{s.platform}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <code className="text-xs text-muted-foreground truncate block max-w-xs">
+                              {s.ical_url}
+                            </code>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {s.last_synced ? format(new Date(s.last_synced), 'dd/MM/yy HH:mm') : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {s.last_error ? (
+                              <Badge variant="destructive" title={s.last_error}>
+                                {lang === 'it' ? 'Errore' : 'Error'}
+                              </Badge>
+                            ) : s.last_synced ? (
+                              <Badge>
+                                {(s.last_event_count ?? 0)} {lang === 'it' ? 'eventi' : 'events'}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary">
+                                {lang === 'it' ? 'In attesa' : 'Pending'}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => runSync(s.id)}
+                                title={lang === 'it' ? 'Sincronizza ora' : 'Sync now'}
+                                data-testid={`run-sync-${s.id}`}
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteSync(s.id)}
+                                className="text-destructive hover:text-destructive/80"
+                                data-testid={`delete-sync-${s.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+                {syncs.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground">
+                    {lang === 'it' ? 'Nessun feed iCal configurato' : 'No iCal feeds configured'}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </main>
+
+        {/* Booking Documents Dialog */}
+        <Dialog open={!!docsBookingId} onOpenChange={(open) => !open && setDocsBookingId(null)}>
+          <DialogContent className="bg-card border-white/10 max-w-lg" data-testid="booking-docs-dialog">
+            <DialogHeader>
+              <DialogTitle className="font-display">
+                {lang === 'it' ? 'Documenti Ospite' : 'Guest Documents'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              {bookingDocs.length === 0 && (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  {lang === 'it' ? 'Nessun documento caricato' : 'No documents uploaded'}
+                </p>
+              )}
+              {bookingDocs.map((d) => (
+                <div key={d.id} className="flex items-center justify-between p-3 border border-white/10">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{d.original_filename}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {d.document_type} · {(d.size / 1024).toFixed(0)} KB · {format(new Date(d.uploaded_at), 'dd/MM/yy HH:mm')}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => downloadDoc(d.id, d.original_filename)}
+                    data-testid={`download-doc-${d.id}`}
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

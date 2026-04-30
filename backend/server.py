@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Header, UploadFile, File, Query, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -9,12 +9,14 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import jwt
 import bcrypt
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionResponse, CheckoutSessionRequest
 import aiohttp
-from icalendar import Calendar
+import requests
+from icalendar import Calendar, Event
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -32,8 +34,63 @@ JWT_EXPIRATION_HOURS = 24
 # Stripe Configuration
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', 'sk_test_emergent')
 
+# Object Storage Configuration
+STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
+APP_NAME = os.environ.get('APP_NAME', 'terracito-appartments')
+_storage_key: Optional[str] = None
+
+def init_storage() -> Optional[str]:
+    """Initialize once. Returns session-scoped storage_key (or None on failure)."""
+    global _storage_key
+    if _storage_key:
+        return _storage_key
+    if not EMERGENT_LLM_KEY:
+        logger.warning("EMERGENT_LLM_KEY not set; object storage disabled")
+        return None
+    try:
+        resp = requests.post(
+            f"{STORAGE_URL}/init",
+            json={"emergent_key": EMERGENT_LLM_KEY},
+            timeout=30
+        )
+        resp.raise_for_status()
+        _storage_key = resp.json()["storage_key"]
+        return _storage_key
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
+        return None
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key, "Content-Type": content_type},
+        data=data, timeout=120
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def get_object(path: str) -> tuple:
+    key = init_storage()
+    if not key:
+        raise HTTPException(status_code=503, detail="Storage unavailable")
+    resp = requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": key}, timeout=60
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+ALLOWED_DOC_TYPES = {
+    "image/jpeg", "image/png", "image/webp", "image/heic", "application/pdf"
+}
+MAX_DOC_SIZE = 10 * 1024 * 1024  # 10 MB
+
 # Create the main app
-app = FastAPI(title="VacayStay - Luxury Vacation Rentals")
+app = FastAPI(title="TerracitoAppartments - Luxury Vacation Rentals")
 
 # Create router with /api prefix
 api_router = APIRouter(prefix="/api")
@@ -567,37 +624,36 @@ async def get_availability(property_id: str, month: Optional[str] = None):
         "check_out": {"$gte": start_date.isoformat()}
     }, {"_id": 0, "check_in": 1, "check_out": 1, "source": 1}).to_list(100)
     
-    # Get iCal blocked dates
-    ical_syncs = await db.ical_syncs.find({"property_id": property_id}, {"_id": 0}).to_list(10)
-    blocked_dates = []
-    
-    for sync in ical_syncs:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(sync["ical_url"]) as response:
-                    if response.status == 200:
-                        ical_data = await response.text()
-                        cal = Calendar.from_ical(ical_data)
-                        for component in cal.walk():
-                            if component.name == "VEVENT":
-                                start = component.get('dtstart').dt
-                                end = component.get('dtend').dt
-                                if hasattr(start, 'date'):
-                                    start = start.date()
-                                if hasattr(end, 'date'):
-                                    end = end.date()
-                                blocked_dates.append({
-                                    "start": str(start),
-                                    "end": str(end),
-                                    "source": sync["platform"]
-                                })
-        except Exception as e:
-            logger.error(f"iCal sync error: {e}")
-    
+    # Get iCal blocked dates from cached events (synced by background scheduler)
+    cached_events = await db.ical_events.find({
+        "property_id": property_id,
+        "end_date": {"$gte": start_date.date().isoformat()}
+    }, {"_id": 0}).to_list(500)
+    blocked_dates = [
+        {
+            "start": ev["start_date"],
+            "end": ev["end_date"],
+            "source": ev.get("platform", "external"),
+            "summary": ev.get("summary")
+        }
+        for ev in cached_events
+    ]
+
+    # iCal sync metadata
+    sync_meta = await db.ical_syncs.find({"property_id": property_id}, {"_id": 0}).to_list(10)
+
     return {
         "property_id": property_id,
         "bookings": bookings,
-        "blocked_dates": blocked_dates
+        "blocked_dates": blocked_dates,
+        "syncs": [
+            {
+                "id": s["id"],
+                "platform": s["platform"],
+                "last_synced": s.get("last_synced"),
+                "last_error": s.get("last_error")
+            } for s in sync_meta
+        ]
     }
 
 # ============ STRIPE PAYMENT ============
@@ -762,9 +818,15 @@ async def create_ical_sync(data: ICalSyncCreate, user: dict = Depends(require_ad
         "id": sync_id,
         **data.model_dump(),
         "last_synced": None,
+        "last_error": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.ical_syncs.insert_one(sync_doc)
+    # Trigger sync immediately for this new feed
+    try:
+        await sync_single_feed(sync_doc)
+    except Exception as e:
+        logger.error(f"Initial iCal sync failed: {e}")
     return {"id": sync_id, "message": "iCal sync created"}
 
 @api_router.get("/ical-sync/{property_id}")
@@ -772,12 +834,253 @@ async def get_ical_syncs(property_id: str, user: dict = Depends(require_admin)):
     syncs = await db.ical_syncs.find({"property_id": property_id}, {"_id": 0}).to_list(10)
     return syncs
 
+@api_router.get("/ical-syncs")
+async def get_all_ical_syncs(user: dict = Depends(require_admin)):
+    syncs = await db.ical_syncs.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return syncs
+
+@api_router.post("/ical-sync/{sync_id}/run")
+async def run_ical_sync(sync_id: str, user: dict = Depends(require_admin)):
+    sync_doc = await db.ical_syncs.find_one({"id": sync_id}, {"_id": 0})
+    if not sync_doc:
+        raise HTTPException(status_code=404, detail="Sync not found")
+    result = await sync_single_feed(sync_doc)
+    return result
+
 @api_router.delete("/ical-sync/{sync_id}")
 async def delete_ical_sync(sync_id: str, user: dict = Depends(require_admin)):
     result = await db.ical_syncs.delete_one({"id": sync_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Sync not found")
+    # Remove cached events for this sync
+    await db.ical_events.delete_many({"sync_id": sync_id})
     return {"message": "iCal sync deleted"}
+
+
+async def sync_single_feed(sync_doc: dict) -> dict:
+    """Pull iCal feed, parse events, replace cached events for this sync."""
+    sync_id = sync_doc["id"]
+    property_id = sync_doc["property_id"]
+    platform = sync_doc["platform"]
+    url = sync_doc["ical_url"]
+    events_imported = 0
+    error = None
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status != 200:
+                    raise Exception(f"HTTP {response.status}")
+                ical_data = await response.text()
+
+        cal = Calendar.from_ical(ical_data)
+        new_events = []
+        for component in cal.walk():
+            if component.name != "VEVENT":
+                continue
+            start = component.get('dtstart').dt
+            end = component.get('dtend').dt if component.get('dtend') else start
+            if hasattr(start, 'date') and not isinstance(start, date) or isinstance(start, datetime):
+                start = start.date() if isinstance(start, datetime) else start
+            if hasattr(end, 'date') and not isinstance(end, date) or isinstance(end, datetime):
+                end = end.date() if isinstance(end, datetime) else end
+            if not isinstance(start, date):
+                continue
+            if not isinstance(end, date):
+                end = start
+            uid = str(component.get('uid') or f"{sync_id}-{start}-{end}")
+            summary = str(component.get('summary') or platform.title())
+            new_events.append({
+                "id": str(uuid.uuid4()),
+                "sync_id": sync_id,
+                "property_id": property_id,
+                "platform": platform,
+                "uid": uid,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "summary": summary,
+                "synced_at": datetime.now(timezone.utc).isoformat()
+            })
+        events_imported = len(new_events)
+
+        # Replace events for this sync atomically
+        await db.ical_events.delete_many({"sync_id": sync_id})
+        if new_events:
+            await db.ical_events.insert_many(new_events)
+
+    except Exception as e:
+        error = str(e)
+        logger.error(f"iCal sync {sync_id} ({platform}) failed: {e}")
+
+    await db.ical_syncs.update_one(
+        {"id": sync_id},
+        {"$set": {
+            "last_synced": datetime.now(timezone.utc).isoformat(),
+            "last_error": error,
+            "last_event_count": events_imported
+        }}
+    )
+    return {
+        "sync_id": sync_id,
+        "platform": platform,
+        "events_imported": events_imported,
+        "error": error
+    }
+
+
+async def sync_all_feeds_job():
+    """Background job: pulls every iCal sync configured."""
+    syncs = await db.ical_syncs.find({}, {"_id": 0}).to_list(500)
+    logger.info(f"[iCal Scheduler] Running sync for {len(syncs)} feeds")
+    for sync_doc in syncs:
+        try:
+            await sync_single_feed(sync_doc)
+        except Exception as e:
+            logger.error(f"Scheduler sync error for {sync_doc.get('id')}: {e}")
+
+
+# Public iCal export — Airbnb / Booking can subscribe to this URL
+@app.get("/api/ical-export/{property_id}.ics")
+async def export_property_ical(property_id: str):
+    """Export confirmed/pending direct bookings as iCal feed (publicly readable)."""
+    property_doc = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    if not property_doc:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    cal = Calendar()
+    cal.add('prodid', '-//TerracitoAppartments//iCal Export//IT')
+    cal.add('version', '2.0')
+    cal.add('x-wr-calname', f"TerracitoAppartments - {property_doc.get('slug', property_id)}")
+
+    bookings = await db.bookings.find({
+        "property_id": property_id,
+        "status": {"$in": ["pending", "confirmed", "completed"]}
+    }, {"_id": 0}).to_list(1000)
+
+    for b in bookings:
+        try:
+            ev = Event()
+            ev.add('uid', f"{b['id']}@terracitoappartments")
+            ev.add('summary', f"Booking - {b.get('guest_name', 'Direct')}")
+            ev.add('dtstart', date.fromisoformat(b['check_in']))
+            ev.add('dtend', date.fromisoformat(b['check_out']))
+            ev.add('dtstamp', datetime.now(timezone.utc))
+            ev.add('description', f"Source: {b.get('source', 'direct')} | Guests: {b.get('guests', 1)}")
+            ev.add('status', 'CONFIRMED' if b.get('status') == 'confirmed' else 'TENTATIVE')
+            cal.add_component(ev)
+        except Exception as e:
+            logger.error(f"iCal export error for booking {b.get('id')}: {e}")
+
+    return Response(
+        content=cal.to_ical(),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{property_doc.get("slug", property_id)}.ics"'}
+    )
+
+
+# ============ GUEST ID DOCUMENT UPLOAD ============
+
+class BookingDocumentResponse(BaseModel):
+    id: str
+    booking_id: str
+    document_type: str  # id_front, id_back, passport, other
+    original_filename: str
+    content_type: str
+    size: int
+    uploaded_at: str
+
+@api_router.post("/bookings/{booking_id}/documents", response_model=BookingDocumentResponse)
+async def upload_booking_document(
+    booking_id: str,
+    document_type: str = Query("id_front"),
+    file: UploadFile = File(...)
+):
+    """Guest uploads ID document for a booking. No auth: booking_id acts as access token."""
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if document_type not in {"id_front", "id_back", "passport", "other"}:
+        raise HTTPException(status_code=400, detail="Invalid document_type")
+
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_DOC_TYPES))}"
+        )
+
+    data = await file.read()
+    if len(data) > MAX_DOC_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "bin"
+    doc_id = str(uuid.uuid4())
+    storage_path = f"{APP_NAME}/bookings/{booking_id}/{doc_id}.{ext}"
+
+    try:
+        result = put_object(storage_path, data, content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+    doc_record = {
+        "id": doc_id,
+        "booking_id": booking_id,
+        "document_type": document_type,
+        "storage_path": result["path"],
+        "original_filename": file.filename or f"{doc_id}.{ext}",
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "is_deleted": False,
+        "uploaded_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.booking_documents.insert_one(doc_record)
+    return BookingDocumentResponse(
+        id=doc_id, booking_id=booking_id, document_type=document_type,
+        original_filename=doc_record["original_filename"],
+        content_type=content_type, size=doc_record["size"],
+        uploaded_at=doc_record["uploaded_at"]
+    )
+
+@api_router.get("/bookings/{booking_id}/documents", response_model=List[BookingDocumentResponse])
+async def list_booking_documents(booking_id: str):
+    """List documents for a booking. Used by guest after upload (booking_id as access)."""
+    docs = await db.booking_documents.find(
+        {"booking_id": booking_id, "is_deleted": False},
+        {"_id": 0}
+    ).sort("uploaded_at", -1).to_list(20)
+    return [BookingDocumentResponse(**d) for d in docs]
+
+@api_router.get("/admin/documents/{doc_id}/download")
+async def download_document(doc_id: str, user: dict = Depends(require_admin)):
+    doc = await db.booking_documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        data, ct = get_object(doc["storage_path"])
+    except Exception as e:
+        logger.error(f"Document download failed: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
+    return Response(
+        content=data,
+        media_type=doc.get("content_type", ct),
+        headers={"Content-Disposition": f'inline; filename="{doc["original_filename"]}"'}
+    )
+
+@api_router.delete("/admin/documents/{doc_id}")
+async def soft_delete_document(doc_id: str, user: dict = Depends(require_admin)):
+    res = await db.booking_documents.update_one(
+        {"id": doc_id},
+        {"$set": {"is_deleted": True, "deleted_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"message": "Document deleted"}
 
 # ============ CONTACT ============
 
@@ -849,14 +1152,14 @@ async def seed_demo_data():
         return {"message": "Database already has properties"}
     
     # Create admin user
-    admin_exists = await db.users.find_one({"email": "admin@vacaystay.com"})
+    admin_exists = await db.users.find_one({"email": "admin@terracitoappartments.com"})
     if not admin_exists:
         admin_id = str(uuid.uuid4())
         await db.users.insert_one({
             "id": admin_id,
-            "email": "admin@vacaystay.com",
+            "email": "admin@terracitoappartments.com",
             "password": hash_password("admin123"),
-            "full_name": "Admin VacayStay",
+            "full_name": "Admin TerracitoAppartments",
             "role": "admin",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
@@ -1139,7 +1442,7 @@ async def seed_demo_data():
 
 @api_router.get("/")
 async def root():
-    return {"message": "VacayStay API", "version": "1.0.0"}
+    return {"message": "TerracitoAppartments API", "version": "1.0.0"}
 
 # Include router
 app.include_router(api_router)
@@ -1152,6 +1455,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ============ SCHEDULER ============
+
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+@app.on_event("startup")
+async def startup_app():
+    # Initialize object storage (best-effort)
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Object storage init failed at startup: {e}")
+
+    # Start iCal background scheduler (every 30 min)
+    try:
+        scheduler.add_job(
+            sync_all_feeds_job,
+            trigger="interval",
+            minutes=30,
+            id="ical_sync_all",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=20)
+        )
+        scheduler.start()
+        logger.info("iCal scheduler started (every 30 min)")
+    except Exception as e:
+        logger.error(f"Scheduler startup failed: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception:
+        pass
     client.close()

@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { toast } from 'sonner';
+import { DocumentUpload } from '../components/DocumentUpload';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -55,6 +56,11 @@ export const BookingPage = () => {
       });
 
       const bookingId = bookingResponse.data.id;
+
+      // Save booking id locally so success page can offer ID document upload
+      try {
+        localStorage.setItem('terracito.last_booking_id', bookingId);
+      } catch (_) { /* storage may be disabled */ }
 
       // Create Stripe checkout session
       const checkoutResponse = await axios.post(`${API}/payments/create-checkout`, null, {
@@ -260,8 +266,13 @@ export const BookingSuccessPage = () => {
   const sessionId = searchParams.get('session_id');
   const [status, setStatus] = useState('checking');
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [bookingId, setBookingId] = useState(null);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem('terracito.last_booking_id');
+      if (stored) setBookingId(stored);
+    } catch (_) { /* ignore */ }
     if (sessionId) {
       pollPaymentStatus();
     }
@@ -294,8 +305,8 @@ export const BookingSuccessPage = () => {
   };
 
   return (
-    <div className="min-h-screen pt-20 flex items-center justify-center" data-testid="booking-success-page">
-      <div className="max-w-md mx-auto px-6 text-center">
+    <div className="min-h-screen pt-20 pb-16 flex items-center justify-center" data-testid="booking-success-page">
+      <div className="max-w-xl w-full mx-auto px-6 text-center">
         {status === 'checking' && (
           <>
             <Loader2 className="w-16 h-16 mx-auto mb-6 text-primary animate-spin" />
@@ -313,7 +324,7 @@ export const BookingSuccessPage = () => {
             <h1 className="text-3xl font-display font-medium mb-4">
               {t('booking.success')}
             </h1>
-            <p className="text-muted-foreground mb-8">
+            <p className="text-muted-foreground mb-6">
               {t('booking.successMessage')}
             </p>
             {paymentInfo && (
@@ -321,7 +332,14 @@ export const BookingSuccessPage = () => {
                 {lang === 'it' ? 'Importo pagato' : 'Amount paid'}: €{paymentInfo.amount}
               </p>
             )}
-            <Button onClick={() => navigate('/')} className="btn-primary">
+
+            {bookingId && (
+              <div className="my-8">
+                <DocumentUpload bookingId={bookingId} />
+              </div>
+            )}
+
+            <Button onClick={() => navigate('/')} className="btn-primary mt-4" data-testid="success-home-btn">
               {lang === 'it' ? 'Torna alla Home' : 'Back to Home'}
             </Button>
           </>

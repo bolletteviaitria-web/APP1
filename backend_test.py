@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 
 class VacayStayAPITester:
-    def __init__(self, base_url="https://vacaystay-5.preview.emergentagent.com"):
+    def __init__(self, base_url="https://property-rental-test.preview.emergentagent.com"):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.token = None
@@ -301,7 +301,7 @@ class VacayStayAPITester:
             "POST",
             f"payments/create-checkout?booking_id={self.booking_id}&payment_type=full",
             200,
-            headers={'origin': 'https://vacaystay-5.preview.emergentagent.com'}
+            headers={'origin': 'https://property-rental-test.preview.emergentagent.com'}
         )
         
         if success and 'checkout_url' in response:
