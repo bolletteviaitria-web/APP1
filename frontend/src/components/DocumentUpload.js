@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { Upload, FileText, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
@@ -23,20 +23,24 @@ export const DocumentUpload = ({ bookingId }) => {
   const [docType, setDocType] = useState('id_front');
   const inputRef = useRef(null);
 
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     if (!bookingId) return;
     try {
       const res = await axios.get(`${API}/bookings/${bookingId}/documents`);
       setDocs(res.data);
-    } catch (e) {
-      // booking not found yet — silently ignore
+    } catch (err) {
+      // 404 = booking not yet visible to the API; surface anything else.
+      const status = err?.response?.status;
+      if (status && status !== 404) {
+        console.error('Failed to load uploaded documents:', err);
+        toast.error(lang === 'it' ? 'Impossibile caricare i documenti' : 'Could not load uploaded documents');
+      }
     }
-  };
+  }, [bookingId, lang]);
 
   useEffect(() => {
     fetchDocs();
-    // eslint-disable-next-line
-  }, [bookingId]);
+  }, [fetchDocs]);
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];

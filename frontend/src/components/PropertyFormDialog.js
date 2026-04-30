@@ -141,10 +141,10 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
     return { ...f, images: arr };
   });
 
-  // Seasons management
+  // Seasons management — each row gets a stable client-side _key for React reconciliation
   const addSeason = () => setForm((f) => ({
     ...f,
-    seasons: [...f.seasons, { name: '', start_date: '', end_date: '', price_multiplier: 1.0 }]
+    seasons: [...f.seasons, { _key: crypto.randomUUID?.() || `s-${Math.random()}`, name: '', start_date: '', end_date: '', price_multiplier: 1.0 }]
   }));
   const updateSeason = (idx, key, val) => setForm((f) => ({
     ...f,
@@ -439,7 +439,7 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
               <p className="text-sm text-muted-foreground">{tt('Nessuna stagione configurata', 'No seasons configured')}</p>
             )}
             {form.seasons.map((s, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end p-3 border border-border bg-muted/30">
+              <div key={s._key || `season-${s.start_date}-${idx}`} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end p-3 border border-border bg-muted/30">
                 <Input value={s.name} onChange={(e) => updateSeason(idx, 'name', e.target.value)} placeholder={tt('Nome', 'Name')} />
                 <Input type="date" value={s.start_date} onChange={(e) => updateSeason(idx, 'start_date', e.target.value)} />
                 <Input type="date" value={s.end_date} onChange={(e) => updateSeason(idx, 'end_date', e.target.value)} />

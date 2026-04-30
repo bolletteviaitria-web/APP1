@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 5 pure-regression run. Backend 36/36 pytest green. HomePage copy + admin flows + seasons stable-keys all verified. CRITICAL REGRESSION: PropertyDetailPage crashes with ReferenceError 'Cannot access disabledDates before initialization' — TDZ bug in the new useMemo refactor at /app/frontend/src/pages/PropertyDetailPage.js:108-113. The entire property detail page renders a React error boundary. This also blocks BookingPage-from-detail flow (guest cannot reach /booking via property page).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "PropertyDetailPage",
+        "issue": "ReferenceError: Cannot access 'disabledDates' before initialization. `calendarDisabledRules` (line 108 — useMemo) references `disabledDates` (line 113 — useMemo) BEFORE it is declared. Temporal Dead Zone crash. Page is completely blank for every property slug (/property/villa-smeraldo etc.) — gallery thumbs, reviews, booking CTA all fail to render.",
+        "selector": "route /property/:slug",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Public booking flow (detail → booking → Stripe → success)",
+        "issue": "Cannot be exercised end-to-end because PropertyDetailPage crashes; BookingPage poll/useCallback regression could not be re-verified from the detail-page entry point.",
+        "affected_selectors": ["[data-testid^=\"gallery-thumb-\"]", "[data-testid=\"price-total\"]", "[data-testid=\"book-now-btn\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX IMMEDIATELY: In /app/frontend/src/pages/PropertyDetailPage.js move the `disabledDates` useMemo (currently line 113) ABOVE the `calendarDisabledRules` useMemo (currently line 108). Swap the two blocks so `disabledDates` is defined before it is read. Simple ordering fix, no logic change.",
+    "After the fix, re-run PropertyDetailPage e2e: gallery thumbs, calendar hover (no flicker), price calculation, 'Prenota ora' CTA → /booking.",
+    "Re-run BookingPage + BookingSuccessPage pollPaymentStatus loop after above fix to close the iteration."
+  ],
+  "critical_code_review_comments": [
+    "PropertyDetailPage.js:108-113 — classic TDZ regression introduced by this iteration's useMemo hoisting. The `no-use-before-define` ESLint rule would have caught this. Suggest enabling it in frontend eslint config to prevent recurrence.",
+    "PropertyDetailPage.js: both hooks appear to run every render because React still evaluates in source-order — swapping them restores correctness without changing React semantics since both are pure derivations from state.",
+    "server.py:294 bare-except replaced with (jwt.PyJWTError, KeyError) — verified; token-decoding with garbage token still returns None gracefully (401 through normal auth path, no 500).",
+    "backend_test.py:19-20 credentials now env-driven (TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD) with sensible fallback — verified working.",
+    "PropertyFormDialog.js seasons _key = crypto.randomUUID() confirmed — stable-key test PASSED: add 2 seasons, fill 2nd ('TEST_KEEP_ME'), remove 1st, 2nd's value preserved in the remaining input.",
+    "AuthContext.js useMemo/useCallback refactor — no console errors during login or tab switching; identity stable enough that AdminDashboard fetchData useEffect does not re-run indefinitely."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (36/36 pytest)",
+    "frontend": "~70% — HomePage (4 cards + new copy + no banned words), admin login + tab switching (dashboard/properties/bookings/contacts/sync), PropertyFormDialog open + seasons stable keys all PASS. PropertyDetailPage + booking flow from detail-page FAIL due to TDZ bug."
+  },
+  "test_credentials": "admin@terracitoappartments.com / admin123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "No new seed; pytest created+cleaned one TEST_ property and one image upload (image orphan cleanup still a TODO from iteration 3).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Before any further UI work, verify /property/villa-smeraldo (or any slug) renders a gallery and NOT a blank page with the React error boundary warning. If still broken, open DevTools console and look for 'Cannot access X before initialization'. Backend is fully green and unchanged — skip re-running pytest unless backend files are modified. The pollPaymentStatus + BookingPage flow was NOT verifiable this round because the detail-page CTA is unreachable.",
+  "rca of the issue": "Root cause: during the useMemo refactor in iteration 5, two related useMemo hooks were introduced in PropertyDetailPage.js in the wrong source order. `calendarDisabledRules = useMemo(() => [{before: new Date()}, ...disabledDates], [disabledDates])` is declared on line 108, but `disabledDates = useMemo(...)` is declared on line 113. When React first evaluates the component, JavaScript evaluates hook declarations top-down; referencing `disabledDates` inside the first useMemo's factory — invoked inline during evaluation — hits the TDZ because `const disabledDates` has not yet been initialized. Result: ReferenceError, error boundary activates, page blank. Reproduction: open any https://<host>/property/<slug>. Mitigation: swap the two useMemo blocks so `disabledDates` is declared first. No other file in the refactored set (HomePage, AdminDashboard, BookingPage, DocumentUpload, PropertyFormDialog, AuthContext) exhibits this pattern — spot-checked via grep."
+}

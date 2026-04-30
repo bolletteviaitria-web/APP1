@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -8,8 +8,29 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(() => {
+    try { return localStorage.getItem('token'); } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
+
+  const logout = useCallback(() => {
+    try { localStorage.removeItem('token'); } catch (e) { console.warn('logout: storage error', e); }
+    setToken(null);
+    setUser(null);
+    delete axios.defaults.headers.common['Authorization'];
+  }, []);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API}/auth/me`);
+      setUser(response.data);
+    } catch (error) {
+      console.warn('Auth: token invalid or expired, logging out');
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  }, [logout]);
 
   useEffect(() => {
     if (token) {
@@ -18,58 +39,37 @@ export const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, fetchUser]);
 
-  const fetchUser = async () => {
-    try {
-      const response = await axios.get(`${API}/auth/me`);
-      setUser(response.data);
-    } catch (error) {
-      logout();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });
     const { access_token, user: userData } = response.data;
-    localStorage.setItem('token', access_token);
+    try { localStorage.setItem('token', access_token); } catch (e) { console.warn('login: storage error', e); }
     setToken(access_token);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
     return userData;
-  };
+  }, []);
 
-  const register = async (email, password, full_name, phone) => {
-    const response = await axios.post(`${API}/auth/register`, { 
-      email, 
-      password, 
-      full_name, 
-      phone 
-    });
+  const register = useCallback(async (email, password, full_name, phone) => {
+    const response = await axios.post(`${API}/auth/register`, { email, password, full_name, phone });
     const { access_token, user: userData } = response.data;
-    localStorage.setItem('token', access_token);
+    try { localStorage.setItem('token', access_token); } catch (e) { console.warn('register: storage error', e); }
     setToken(access_token);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
     return userData;
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    setToken(null);
-    setUser(null);
-    delete axios.defaults.headers.common['Authorization'];
-  };
+  }, []);
 
   const isAdmin = user?.role === 'admin';
 
-  return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, isAdmin }}>
-      {children}
-    </AuthContext.Provider>
+  // Stabilize the context value so consumers don't re-render unnecessarily
+  const value = useMemo(
+    () => ({ user, token, loading, login, register, logout, isAdmin }),
+    [user, token, loading, login, register, logout, isAdmin]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

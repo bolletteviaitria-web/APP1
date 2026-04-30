@@ -291,7 +291,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
         return user
-    except:
+    except (jwt.PyJWTError, KeyError):
         return None
 
 async def require_auth(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -506,10 +506,7 @@ async def create_booking(data: BookingCreate, user: dict = Depends(get_current_u
     property_doc = await db.properties.find_one({"id": data.property_id}, {"_id": 0})
     if not property_doc:
         raise HTTPException(status_code=404, detail="Property not found")
-    
-    check_in = datetime.fromisoformat(data.check_in)
-    check_out = datetime.fromisoformat(data.check_out)
-    
+
     # Check availability
     conflicting = await db.bookings.find_one({
         "property_id": data.property_id,
@@ -1036,14 +1033,16 @@ async def get_property_image(image_id: str):
         raise HTTPException(status_code=404, detail="Image not found")
     try:
         data, ct = get_object(record["storage_path"])
+        return Response(
+            content=data,
+            media_type=record.get("content_type", ct),
+            headers={"Cache-Control": "public, max-age=86400"}
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Property image fetch failed: {e}")
         raise HTTPException(status_code=500, detail="Image unavailable")
-    return Response(
-        content=data,
-        media_type=record.get("content_type", ct),
-        headers={"Cache-Control": "public, max-age=86400"}
-    )
 
 
 # ============ GUEST ID DOCUMENT UPLOAD ============
@@ -1131,14 +1130,16 @@ async def download_document(doc_id: str, user: dict = Depends(require_admin)):
         raise HTTPException(status_code=404, detail="Document not found")
     try:
         data, ct = get_object(doc["storage_path"])
+        return Response(
+            content=data,
+            media_type=doc.get("content_type", ct),
+            headers={"Content-Disposition": f'inline; filename="{doc["original_filename"]}"'}
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Document download failed: {e}")
         raise HTTPException(status_code=500, detail="Download failed")
-    return Response(
-        content=data,
-        media_type=doc.get("content_type", ct),
-        headers={"Content-Disposition": f'inline; filename="{doc["original_filename"]}"'}
-    )
 
 @api_router.delete("/admin/documents/{doc_id}")
 async def soft_delete_document(doc_id: str, user: dict = Depends(require_admin)):

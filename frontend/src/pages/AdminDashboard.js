@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -69,13 +69,10 @@ export const AdminDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    if (!authLoading && isAdmin) {
-      fetchData();
-    }
-  }, [authLoading, isAdmin, activeTab]);
+  // Initial load + refetch when fetchData is reconstructed (activeTab change).
+  // Keeping the original eslint-disable line to avoid duplicate effects below.
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'dashboard') {
@@ -104,7 +101,14 @@ export const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, t]);
+
+  // Re-run when fetchData identity changes (i.e. when activeTab changes), but only if user is admin and auth is ready.
+  useEffect(() => {
+    if (!authLoading && isAdmin) {
+      fetchData();
+    }
+  }, [authLoading, isAdmin, fetchData]);
 
   const createSync = async () => {
     if (!newSync.property_id || !newSync.ical_url) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
@@ -60,7 +60,10 @@ export const BookingPage = () => {
       // Save booking id locally so success page can offer ID document upload
       try {
         localStorage.setItem('terracito.last_booking_id', bookingId);
-      } catch (_) { /* storage may be disabled */ }
+      } catch (storageErr) {
+        // Storage may be disabled (private mode, quota, SecurityError). Non-blocking.
+        console.warn('Could not persist booking id locally:', storageErr?.message || storageErr);
+      }
 
       // Create Stripe checkout session
       const checkoutResponse = await axios.post(`${API}/payments/create-checkout`, null, {
@@ -268,25 +271,13 @@ export const BookingSuccessPage = () => {
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [bookingId, setBookingId] = useState(null);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('terracito.last_booking_id');
-      if (stored) setBookingId(stored);
-    } catch (_) { /* ignore */ }
-    if (sessionId) {
-      pollPaymentStatus();
-    }
-  }, [sessionId]);
-
-  const pollPaymentStatus = async (attempts = 0) => {
+  const pollPaymentStatus = useCallback(async (attempts = 0) => {
     if (attempts >= 5) {
       setStatus('timeout');
       return;
     }
-
     try {
       const response = await axios.get(`${API}/payments/status/${sessionId}`);
-      
       if (response.data.payment_status === 'paid') {
         setStatus('success');
         setPaymentInfo(response.data);
@@ -295,14 +286,24 @@ export const BookingSuccessPage = () => {
         setStatus('expired');
         return;
       }
-
-      // Continue polling
       setTimeout(() => pollPaymentStatus(attempts + 1), 2000);
     } catch (error) {
       console.error('Status check error:', error);
       setTimeout(() => pollPaymentStatus(attempts + 1), 2000);
     }
-  };
+  }, [sessionId]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('terracito.last_booking_id');
+      if (stored) setBookingId(stored);
+    } catch (storageErr) {
+      console.warn('Could not read booking id from localStorage:', storageErr?.message || storageErr);
+    }
+    if (sessionId) {
+      pollPaymentStatus();
+    }
+  }, [sessionId, pollPaymentStatus]);
 
   return (
     <div className="min-h-screen pt-20 pb-16 flex items-center justify-center" data-testid="booking-success-page">

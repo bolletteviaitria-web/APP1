@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
@@ -59,17 +59,9 @@ export const PropertyDetailPage = () => {
   const [availability, setAvailability] = useState(null);
   const [reviews, setReviews] = useState([]);
 
-  useEffect(() => {
-    fetchProperty();
-  }, [slug]);
+  // Initial data + price calculation effects are declared after the useCallback definitions below.
 
-  useEffect(() => {
-    if (property && dateRange.from && dateRange.to) {
-      calculatePrice();
-    }
-  }, [dateRange, guests, selectedExtras, property]);
-
-  const fetchProperty = async () => {
+  const fetchProperty = useCallback(async () => {
     try {
       const [propertyRes, availabilityRes, reviewsRes] = await Promise.all([
         axios.get(`${API}/properties/${slug}`),
@@ -84,11 +76,10 @@ export const PropertyDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [slug]);
 
-  const calculatePrice = async () => {
-    if (!dateRange.from || !dateRange.to) return;
-    
+  const calculatePrice = useCallback(async () => {
+    if (!dateRange.from || !dateRange.to || !property) return;
     try {
       const response = await axios.post(`${API}/properties/calculate-price`, {
         property_id: property.id,
@@ -102,7 +93,22 @@ export const PropertyDetailPage = () => {
       console.error('Price calculation error:', error);
       setPriceBreakdown(null);
     }
-  };
+  }, [dateRange, guests, selectedExtras, property]);
+
+  useEffect(() => {
+    fetchProperty();
+  }, [fetchProperty]);
+
+  useEffect(() => {
+    if (property && dateRange.from && dateRange.to) {
+      calculatePrice();
+    }
+  }, [calculatePrice, property, dateRange]);
+
+  const calendarDisabledRules = useMemo(
+    () => [{ before: new Date() }, ...disabledDates],
+    [disabledDates]
+  );
 
   const disabledDates = useMemo(() => {
     if (!availability) return [];
@@ -205,9 +211,9 @@ export const PropertyDetailPage = () => {
             
             {/* Thumbnails */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-              {property.images.map((_, idx) => (
+              {property.images.map((img, idx) => (
                 <button
-                  key={idx}
+                  key={`thumb-${img}-${idx}`}
                   onClick={() => setCurrentImageIndex(idx)}
                   className={`w-2 h-2 rounded-full transition-colors ${
                     idx === currentImageIndex ? 'bg-primary' : 'bg-white/50 hover:bg-white/80'
@@ -293,7 +299,7 @@ export const PropertyDetailPage = () => {
                       <div className="flex items-center gap-2 mb-3">
                         {[...Array(5)].map((_, i) => (
                           <Star
-                            key={i}
+                            key={`${review.id}-star-${i}`}
                             className={`w-4 h-4 ${i < review.rating ? 'text-primary fill-primary' : 'text-muted-foreground'}`}
                           />
                         ))}
@@ -347,7 +353,7 @@ export const PropertyDetailPage = () => {
                   mode="range"
                   selected={dateRange}
                   onSelect={setDateRange}
-                  disabled={[{ before: new Date() }, ...disabledDates]}
+                  disabled={calendarDisabledRules}
                   locale={dateLocale}
                   numberOfMonths={1}
                   className="bg-card border border-border/60 p-3"

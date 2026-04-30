@@ -16,8 +16,8 @@ from datetime import date, timedelta
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://property-rental-test.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_EMAIL = "admin@terracitoappartments.com"
-ADMIN_PASSWORD = "admin123"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "admin@terracitoappartments.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
 
 # ---------- fixtures ----------

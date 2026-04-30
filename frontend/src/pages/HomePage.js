@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
@@ -14,20 +14,18 @@ export const HomePage = () => {
   const [loading, setLoading] = useState(true);
   const lang = i18n.language;
 
-  useEffect(() => {
-    fetchProperties();
-    seedData();
-  }, []);
-
-  const seedData = async () => {
+  const seedData = useCallback(async () => {
     try {
       await axios.post(`${API}/seed`);
     } catch (error) {
-      // Ignore if already seeded
+      // Seed endpoint is idempotent — only meaningful failures are network issues we can ignore here
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('seed (non-blocking):', error?.response?.status || error?.message);
+      }
     }
-  };
+  }, []);
 
-  const fetchProperties = async () => {
+  const fetchProperties = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/properties`);
       setProperties(response.data.slice(0, 4));
@@ -36,7 +34,12 @@ export const HomePage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProperties();
+    seedData();
+  }, [fetchProperties, seedData]);
 
   return (
     <div className="min-h-screen" data-testid="home-page">
