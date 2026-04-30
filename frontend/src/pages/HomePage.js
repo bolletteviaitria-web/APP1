@@ -46,7 +46,7 @@ export const HomePage = () => {
         <div className="absolute inset-0">
           <img
             src="https://images.unsplash.com/photo-1672226405717-697c84f48f9e?w=1920&q=80"
-            alt="Luxury Villa"
+            alt="Casa vacanza in Italia"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[#1E232B]/80 via-[#1E232B]/55 to-transparent" />
@@ -131,12 +131,12 @@ export const HomePage = () => {
                 <Star className="w-6 h-6 text-primary" />
               </div>
               <h3 className="text-xl font-display font-medium mb-3">
-                {lang === 'it' ? 'Selezione Esclusiva' : 'Exclusive Selection'}
+                {lang === 'it' ? 'Sempre Pulite' : 'Always Spotless'}
               </h3>
               <p className="text-muted-foreground">
                 {lang === 'it' 
-                  ? 'Ogni proprietà è accuratamente selezionata per garantire standard di lusso eccezionali.' 
-                  : 'Each property is carefully selected to ensure exceptional luxury standards.'}
+                  ? 'Pulizie accurate prima di ogni arrivo: troverai biancheria fresca e ambienti curati nel dettaglio.' 
+                  : 'Thorough cleaning before every arrival: fresh linen and rooms cared for down to the smallest detail.'}
               </p>
             </div>
 
@@ -145,12 +145,12 @@ export const HomePage = () => {
                 <MapPin className="w-6 h-6 text-primary" />
               </div>
               <h3 className="text-xl font-display font-medium mb-3">
-                {lang === 'it' ? 'Posizioni Uniche' : 'Unique Locations'}
+                {lang === 'it' ? 'Posizioni Belle' : 'Lovely Locations'}
               </h3>
               <p className="text-muted-foreground">
                 {lang === 'it' 
-                  ? 'Dalle coste della Sardegna alle vette delle Dolomiti, scopri l\'Italia più autentica.' 
-                  : 'From the coasts of Sardinia to the peaks of the Dolomites, discover authentic Italy.'}
+                  ? 'Dalle coste della Sardegna alle montagne, case in luoghi che ti faranno sentire davvero in vacanza.' 
+                  : 'From Sardinian coasts to the mountains, homes in places that will truly make you feel on holiday.'}
               </p>
             </div>
 
@@ -159,12 +159,12 @@ export const HomePage = () => {
                 <Users className="w-6 h-6 text-primary" />
               </div>
               <h3 className="text-xl font-display font-medium mb-3">
-                {lang === 'it' ? 'Assistenza Dedicata' : 'Dedicated Support'}
+                {lang === 'it' ? 'Sempre a Disposizione' : 'Always Available'}
               </h3>
               <p className="text-muted-foreground">
                 {lang === 'it' 
-                  ? 'Il nostro team è disponibile 24/7 per rendere il tuo soggiorno indimenticabile.' 
-                  : 'Our team is available 24/7 to make your stay unforgettable.'}
+                  ? 'Un punto di contatto diretto via WhatsApp prima, durante e dopo il soggiorno.' 
+                  : 'A direct WhatsApp contact before, during and after your stay.'}
               </p>
             </div>
           </div>

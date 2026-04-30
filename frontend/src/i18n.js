@@ -14,10 +14,10 @@ const resources = {
       "nav.logout": "Esci",
       
       // Hero
-      "hero.overline": "Case Vacanze di Lusso",
-      "hero.title": "Esperienze Uniche in Italia",
-      "hero.subtitle": "Scopri le nostre esclusive proprietà selezionate per offrirti soggiorni indimenticabili",
-      "hero.cta": "Esplora le Proprietà",
+      "hero.overline": "Case Vacanza in Italia",
+      "hero.title": "Soggiorni Curati nei Dettagli",
+      "hero.subtitle": "Case accoglienti, sempre pulite e seguite con cura — il comfort di sentirsi a casa, ovunque tu vada.",
+      "hero.cta": "Esplora le Case",
       
       // Properties
       "properties.title": "Le Nostre Proprietà",
@@ -160,14 +160,14 @@ const resources = {
       "nav.logout": "Logout",
       
       // Hero
-      "hero.overline": "Luxury Vacation Rentals",
-      "hero.title": "Unique Experiences in Italy",
-      "hero.subtitle": "Discover our exclusive properties selected to offer you unforgettable stays",
-      "hero.cta": "Explore Properties",
+      "hero.overline": "Italian Vacation Homes",
+      "hero.title": "Stays Cared For, Down to the Detail",
+      "hero.subtitle": "Welcoming homes, always spotless and looked after — the comfort of feeling at home, wherever you go.",
+      "hero.cta": "Explore Homes",
       
       // Properties
-      "properties.title": "Our Properties",
-      "properties.subtitle": "Exclusive collection of selected residences",
+      "properties.title": "Our Homes",
+      "properties.subtitle": "A small selection of homes — well-kept, spotless and ready to welcome you",
       "properties.guests": "guests",
       "properties.bedrooms": "bedrooms",
       "properties.bathrooms": "bathrooms",
@@ -225,7 +225,7 @@ const resources = {
       "contact.success": "Message sent successfully!",
       
       // Footer
-      "footer.tagline": "Luxury experiences in selected vacation rentals in Italy",
+      "footer.tagline": "Italian vacation homes, cared for with attention and always spotless. Real comfort for your stay.",
       "footer.quickLinks": "Quick Links",
       "footer.legal": "Legal",
       "footer.privacy": "Privacy Policy",

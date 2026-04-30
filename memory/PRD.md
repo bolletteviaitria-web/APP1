@@ -1,7 +1,7 @@
 # TerracitoAppartments — Product Requirements
 
 ## Original Problem Statement
-Sito web completo per gestione di multiple case vacanze di lusso in Italia, multi-lingua (IT/EN), con prenotazione diretta, calcolo prezzi dinamico, integrazione Stripe, contatto WhatsApp, dashboard admin e sincronizzazione iCal con Airbnb/Booking. Il cliente vuole un aspetto moderno e accattivante, partendo da 5 proprietà estendibili.
+Sito web completo per gestione di multiple case vacanza in Italia. Posizionamento: case **ben curate, pulite e accoglienti** — comfort autentico, non lusso ostentato. Multilingua IT/EN, prenotazione diretta con calcolo prezzi, integrazione Stripe, contatto WhatsApp, dashboard admin completa, sincronizzazione iCal con Airbnb/Booking. Si parte da 5 case estendibili tramite admin.
 
 ## Stack
 - **Frontend**: React + Tailwind v3 + shadcn/ui, react-i18next (IT/EN), date-fns
@@ -59,6 +59,7 @@ Sito web completo per gestione di multiple case vacanze di lusso in Italia, mult
 - **2026-04-30** — Iteration 1 (handoff): MVP completo VacayStay, Stripe, WhatsApp, Admin base, seed 5 properties.
 - **2026-04-30** — Iteration 2: Rebrand → TerracitoAppartments. iCal scheduler bidirezionale (APScheduler + export pubblico). Upload documenti d'identità ospiti via Emergent Object Storage. 23/23 backend tests green.
 - **2026-04-30** — Iteration 3: Light Mediterranean theme (Cormorant Garamond, terracotta su cream). Admin Property CRUD completo con upload immagini. 36/36 backend tests green.
+- **2026-04-30** — Iteration 4: Riposizionamento copy. Rimossi tutti i riferimenti a "lusso/luxury/esclusivo/elegante". Hero, feature card, footer, descrizioni seed e meta SEO ora puntano su "case ben curate, sempre pulite, accoglienti, comfort autentico". Aggiornate 5 proprietà già seedate nel DB.
 
 ## Pending / Future
 - **P1** Multi-lingua IT/EN dinamica (il toggle esiste ma alcune stringhe sono ancora hardcoded; rivedere AdminDashboard, BookingPage, LegalPages)

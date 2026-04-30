@@ -90,7 +90,7 @@ ALLOWED_DOC_TYPES = {
 MAX_DOC_SIZE = 10 * 1024 * 1024  # 10 MB
 
 # Create the main app
-app = FastAPI(title="TerracitoAppartments - Luxury Vacation Rentals")
+app = FastAPI(title="TerracitoAppartments - Vacation Homes in Italy")
 
 # Create router with /api prefix
 api_router = APIRouter(prefix="/api")
@@ -1239,13 +1239,13 @@ async def seed_demo_data():
             "translations": {
                 "it": {
                     "title": "Villa Smeraldo",
-                    "description": "Lussuosa villa con vista mare mozzafiato sulla Costa Smeralda. Piscina a sfioro, giardino mediterraneo e interni di design.",
-                    "area_description": "A pochi minuti dalle spiagge più esclusive della Sardegna"
+                    "description": "Casa accogliente e ben curata vicino al mare della Costa Smeralda. Piscina, giardino mediterraneo e ambienti ampi e luminosi, sempre puliti.",
+                    "area_description": "A pochi minuti dalle spiagge della Sardegna"
                 },
                 "en": {
                     "title": "Emerald Villa",
-                    "description": "Luxurious villa with breathtaking sea views on the Costa Smeralda. Infinity pool, Mediterranean garden and designer interiors.",
-                    "area_description": "Minutes from Sardinia's most exclusive beaches"
+                    "description": "A welcoming, well-kept home near the Costa Smeralda sea. Pool, Mediterranean garden and bright, spacious rooms — always spotless.",
+                    "area_description": "Minutes from Sardinia's beaches"
                 }
             },
             "location": {
@@ -1294,12 +1294,12 @@ async def seed_demo_data():
             "translations": {
                 "it": {
                     "title": "Casa Amalfi",
-                    "description": "Elegante appartamento nel cuore della Costiera Amalfitana con terrazza panoramica e accesso privato al mare.",
+                    "description": "Appartamento curato nel cuore della Costiera Amalfitana, con terrazza panoramica e ambienti tirati a lucido prima di ogni arrivo.",
                     "area_description": "Nel centro storico di Amalfi, a pochi passi dal Duomo"
                 },
                 "en": {
                     "title": "Amalfi House",
-                    "description": "Elegant apartment in the heart of the Amalfi Coast with panoramic terrace and private sea access.",
+                    "description": "Well-kept apartment in the heart of the Amalfi Coast, with a panoramic terrace and rooms cleaned to a shine before every arrival.",
                     "area_description": "In the historic center of Amalfi, steps from the Cathedral"
                 }
             },
@@ -1346,12 +1346,12 @@ async def seed_demo_data():
             "translations": {
                 "it": {
                     "title": "Trullo Valle d'Itria",
-                    "description": "Autentico trullo ristrutturato con piscina privata immerso negli ulivi secolari della Valle d'Itria.",
+                    "description": "Trullo ristrutturato con piscina privata, immerso negli ulivi della Valle d'Itria. Casa pulita e ordinata, perfetta per staccare.",
                     "area_description": "Tra Alberobello e Martina Franca, nel cuore della Puglia"
                 },
                 "en": {
                     "title": "Valle d'Itria Trullo",
-                    "description": "Authentic restored trullo with private pool surrounded by centuries-old olive trees in Valle d'Itria.",
+                    "description": "Restored trullo with a private pool, surrounded by olive trees in Valle d'Itria. Clean, tidy home — perfect for unwinding.",
                     "area_description": "Between Alberobello and Martina Franca, in the heart of Puglia"
                 }
             },
@@ -1399,12 +1399,12 @@ async def seed_demo_data():
             "translations": {
                 "it": {
                     "title": "Chalet Dolomiti",
-                    "description": "Raffinato chalet alpino con spa privata e vista spettacolare sulle Dolomiti. Perfetto per sci e trekking.",
+                    "description": "Chalet in legno con vista sulle Dolomiti, ben curato e accogliente. Pulizie frequenti e biancheria fresca a ogni soggiorno.",
                     "area_description": "A Cortina d'Ampezzo, nel cuore delle Dolomiti UNESCO"
                 },
                 "en": {
                     "title": "Dolomites Chalet",
-                    "description": "Refined alpine chalet with private spa and spectacular Dolomites views. Perfect for skiing and hiking.",
+                    "description": "Wooden chalet with Dolomites views — well-kept and welcoming. Regular cleaning and fresh linen for every stay.",
                     "area_description": "In Cortina d'Ampezzo, heart of the UNESCO Dolomites"
                 }
             },
@@ -1453,12 +1453,12 @@ async def seed_demo_data():
             "translations": {
                 "it": {
                     "title": "Palazzo Toscano",
-                    "description": "Storico palazzo rinascimentale nel centro di Firenze con affreschi originali e vista sul Duomo.",
+                    "description": "Appartamento in palazzo storico nel centro di Firenze, ambienti spaziosi e sempre puliti, a due passi dai monumenti principali.",
                     "area_description": "A due passi da Piazza della Signoria e Ponte Vecchio"
                 },
                 "en": {
                     "title": "Tuscan Palace",
-                    "description": "Historic Renaissance palace in central Florence with original frescoes and Duomo views.",
+                    "description": "Apartment in a historic building in central Florence — spacious, always clean, just steps from the main landmarks.",
                     "area_description": "Steps from Piazza della Signoria and Ponte Vecchio"
                 }
             },
