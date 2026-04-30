@@ -105,15 +105,10 @@ export const PropertyDetailPage = () => {
     }
   }, [calculatePrice, property, dateRange]);
 
-  const calendarDisabledRules = useMemo(
-    () => [{ before: new Date() }, ...disabledDates],
-    [disabledDates]
-  );
-
   const disabledDates = useMemo(() => {
     if (!availability) return [];
     const disabled = [];
-    
+
     // Add booked dates
     availability.bookings?.forEach(booking => {
       let current = parseISO(booking.check_in);
@@ -123,7 +118,7 @@ export const PropertyDetailPage = () => {
         current = addDays(current, 1);
       }
     });
-    
+
     // Add iCal blocked dates
     availability.blocked_dates?.forEach(block => {
       let current = parseISO(block.start);
@@ -133,9 +128,14 @@ export const PropertyDetailPage = () => {
         current = addDays(current, 1);
       }
     });
-    
+
     return disabled;
   }, [availability]);
+
+  const calendarDisabledRules = useMemo(
+    () => [{ before: new Date() }, ...disabledDates],
+    [disabledDates]
+  );
 
   const handleProceedToBooking = () => {
     if (!dateRange.from || !dateRange.to || !priceBreakdown) return;

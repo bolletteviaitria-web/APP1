@@ -60,14 +60,17 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - **2026-04-30** — Iteration 2: Rebrand → TerracitoAppartments. iCal scheduler bidirezionale (APScheduler + export pubblico). Upload documenti d'identità ospiti via Emergent Object Storage. 23/23 backend tests green.
 - **2026-04-30** — Iteration 3: Light Mediterranean theme (Cormorant Garamond, terracotta su cream). Admin Property CRUD completo con upload immagini. 36/36 backend tests green.
 - **2026-04-30** — Iteration 4: Riposizionamento copy. Rimossi tutti i riferimenti a "lusso/luxury/esclusivo/elegante". Hero, feature card, footer, descrizioni seed e meta SEO ora puntano su "case ben curate, sempre pulite, accoglienti, comfort autentico". Aggiornate 5 proprietà già seedate nel DB.
+- **2026-04-30** — Iteration 5: Code-review fixes. Backend: bare except → tipizzato; credenziali test via env; Response spostate dentro try (no più pseudo-warning unbound vars); rimosse var inutilizzate. Frontend: useCallback/useMemo per stabilizzare reference (AuthContext value, fetchProperty, calculatePrice, fetchData admin, fetchDocs, pollPaymentStatus, calendarDisabledRules); useEffect deps complete; key React stabili al posto degli index (gallery thumbs, review stars, season rows con _key uuid); empty catch sostituiti con log+toast quando rilevanti. Bug TDZ scoperto e fixato (PropertyDetailPage useMemo order). 36/36 backend test green; UI verificata.
 
 ## Pending / Future
 - **P1** Multi-lingua IT/EN dinamica (il toggle esiste ma alcune stringhe sono ancora hardcoded; rivedere AdminDashboard, BookingPage, LegalPages)
 - **P2** Email automatiche pre/post-soggiorno + invio contratto (Resend o SendGrid)
 - **P2** Sistema upselling in fase di prenotazione (selezione extras prima del pagamento)
 - **P3** DocumentUpload visibile anche prima del completamento Stripe (gating su payment status fa sì che non si veda in dev)
-- **P3** Refactoring `server.py` (1561 righe) → suddivisione in router per dominio
-- **P3** Cleanup job per `property_images` orfane
+- **P3** Refactoring `server.py` (1561 righe) → suddivisione in router per dominio. AdminDashboard.js (~830 righe) e PropertyFormDialog.js (~500 righe) — split in sotto-componenti.
+- **P3** Migrazione token JWT da `localStorage` a httpOnly cookies (richiede backend session cookies + CSRF token).
+- **P3** Cleanup job per `property_images` orfane.
+- **P3** Refactor `calculate_price()` (complessità 19) e `sync_single_feed()` (complessità 19) in step modulari.
 
 ## Test Credentials
 Vedi `/app/memory/test_credentials.md`
