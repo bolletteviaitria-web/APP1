@@ -48,8 +48,10 @@ def sample_property():
 @pytest.fixture(scope="session")
 def test_booking(sample_property):
     """Create a direct booking (no auth required) for document upload tests."""
-    check_in = (date.today() + timedelta(days=60)).isoformat()
-    check_out = (date.today() + timedelta(days=63)).isoformat()
+    import random
+    offset = random.randint(90, 365)
+    check_in = (date.today() + timedelta(days=offset)).isoformat()
+    check_out = (date.today() + timedelta(days=offset + 3)).isoformat()
     payload = {
         "property_id": sample_property["id"],
         "check_in": check_in,
@@ -272,3 +274,145 @@ class TestGuestDocuments:
     def test_admin_soft_delete_404(self, admin_headers):
         r = requests.delete(f"{API}/admin/documents/nonexistent", headers=admin_headers, timeout=30)
         assert r.status_code == 404
+
+
+# ---------- Property image upload / public fetch ----------
+class TestPropertyImages:
+    uploaded_image_id = None
+
+    def _make_png_bytes(self):
+        return bytes.fromhex(
+            "89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4"
+            "890000000D49444154789C63F8FFFF3F0000050001011C27D3810000000049454E44AE426082"
+        )
+
+    def test_upload_image_requires_admin(self):
+        files = {"file": ("x.png", self._make_png_bytes(), "image/png")}
+        r = requests.post(f"{API}/admin/properties/upload-image", files=files, timeout=30)
+        assert r.status_code in (401, 403)
+
+    def test_upload_image_rejects_text(self, admin_headers):
+        files = {"file": ("notes.txt", b"hello world", "text/plain")}
+        r = requests.post(f"{API}/admin/properties/upload-image",
+                          files=files, headers=admin_headers, timeout=30)
+        assert r.status_code == 400
+
+    def test_upload_image_too_large(self, admin_headers):
+        # 11 MB of zeros tagged as PNG
+        big = b"\x89PNG\r\n\x1a\n" + b"0" * (11 * 1024 * 1024)
+        files = {"file": ("big.png", big, "image/png")}
+        r = requests.post(f"{API}/admin/properties/upload-image",
+                          files=files, headers=admin_headers, timeout=120)
+        assert r.status_code == 400
+
+    def test_upload_image_png_success(self, admin_headers):
+        files = {"file": ("prop.png", self._make_png_bytes(), "image/png")}
+        r = requests.post(f"{API}/admin/properties/upload-image",
+                          files=files, headers=admin_headers, timeout=60)
+        assert r.status_code == 200, f"{r.status_code} {r.text}"
+        data = r.json()
+        assert "id" in data
+        assert data["url"] == f"/api/property-images/{data['id']}"
+        assert data["size"] > 0
+        assert data["filename"] == "prop.png"
+        TestPropertyImages.uploaded_image_id = data["id"]
+
+    def test_public_image_fetch_ok(self):
+        assert TestPropertyImages.uploaded_image_id
+        r = requests.get(f"{API}/property-images/{TestPropertyImages.uploaded_image_id}", timeout=30)
+        assert r.status_code == 200
+        assert "image/png" in r.headers.get("content-type", "")
+        # Note: Cache-Control may be overridden by CDN/proxy to no-store; backend sets public max-age=86400
+        assert len(r.content) > 0
+
+    def test_public_image_fetch_unknown_404(self):
+        r = requests.get(f"{API}/property-images/{uuid.uuid4()}", timeout=30)
+        assert r.status_code == 404
+
+
+# ---------- Property full CRUD ----------
+class TestPropertyCRUD:
+    created_property_id = None
+
+    def _payload(self, slug):
+        return {
+            "slug": slug,
+            "translations": {
+                "it": {"title": "TEST Villa IT", "description": "Descrizione IT"},
+                "en": {"title": "TEST Villa EN", "description": "Description EN"},
+            },
+            "location": {"address": "Via Roma 1", "city": "Roma", "region": "Lazio",
+                         "country": "IT", "lat": 41.9, "lng": 12.5},
+            "amenities": ["wifi", "pool"],
+            "max_guests": 4,
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "images": ["https://images.unsplash.com/photo-1672226405717-697c84f48f9e?w=800"],
+            "pricing": {"base_price": 150.0, "cleaning_fee": 40.0},
+            "seasons": [],
+            "extras": [],
+            "min_nights": 2,
+            "is_active": True,
+        }
+
+    def test_create_property_requires_admin(self):
+        r = requests.post(f"{API}/properties", json=self._payload(f"test-noauth-{uuid.uuid4().hex[:6]}"), timeout=30)
+        assert r.status_code in (401, 403)
+
+    def test_create_property(self, admin_headers):
+        slug = f"test-villa-{uuid.uuid4().hex[:8]}"
+        r = requests.post(f"{API}/properties", json=self._payload(slug),
+                          headers=admin_headers, timeout=30)
+        assert r.status_code == 200, f"{r.status_code} {r.text}"
+        data = r.json()
+        assert data["slug"] == slug
+        assert data["translations"]["it"]["title"] == "TEST Villa IT"
+        assert data["pricing"]["base_price"] == 150.0
+        assert "id" in data
+        TestPropertyCRUD.created_property_id = data["id"]
+
+        # verify persistence with GET
+        r2 = requests.get(f"{API}/properties/{data['id']}", timeout=30)
+        assert r2.status_code == 200
+        assert r2.json()["slug"] == slug
+
+    def test_update_property(self, admin_headers):
+        pid = TestPropertyCRUD.created_property_id
+        assert pid
+        # pull current to keep slug
+        cur = requests.get(f"{API}/properties/{pid}", timeout=30).json()
+        payload = self._payload(cur["slug"])
+        payload["pricing"]["base_price"] = 222.0
+        r = requests.put(f"{API}/properties/{pid}", json=payload,
+                         headers=admin_headers, timeout=30)
+        assert r.status_code == 200, f"{r.status_code} {r.text}"
+        assert r.json()["pricing"]["base_price"] == 222.0
+        # verify persistence
+        r2 = requests.get(f"{API}/properties/{pid}", timeout=30)
+        assert r2.json()["pricing"]["base_price"] == 222.0
+
+    def test_update_property_404(self, admin_headers):
+        r = requests.put(f"{API}/properties/nonexistent-id",
+                         json=self._payload("test-nope"), headers=admin_headers, timeout=30)
+        assert r.status_code == 404
+
+    def test_delete_property(self, admin_headers):
+        pid = TestPropertyCRUD.created_property_id
+        assert pid
+        r = requests.delete(f"{API}/properties/{pid}", headers=admin_headers, timeout=30)
+        assert r.status_code == 200
+        # verify gone
+        r2 = requests.get(f"{API}/properties/{pid}", timeout=30)
+        assert r2.status_code == 404
+
+    def test_delete_property_404(self, admin_headers):
+        r = requests.delete(f"{API}/properties/nonexistent", headers=admin_headers, timeout=30)
+        assert r.status_code == 404
+
+    def test_seeded_properties_intact(self):
+        r = requests.get(f"{API}/properties", timeout=30)
+        assert r.status_code == 200
+        slugs = {p["slug"] for p in r.json()}
+        required = {"villa-smeraldo", "casa-amalfi", "trullo-valle-itria",
+                    "chalet-dolomiti", "palazzo-toscano"}
+        assert required.issubset(slugs), f"Missing seeded slugs: {required - slugs}"

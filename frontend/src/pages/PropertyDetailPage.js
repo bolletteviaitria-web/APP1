@@ -183,7 +183,7 @@ export const PropertyDetailPage = () => {
           alt={translation.title}
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#020408]/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/60 to-transparent" />
         
         {/* Gallery Navigation */}
         {property.images.length > 1 && (
@@ -274,7 +274,7 @@ export const PropertyDetailPage = () => {
                 {property.amenities.map((amenity) => {
                   const Icon = amenityIcons[amenity] || Check;
                   return (
-                    <div key={amenity} className="flex items-center gap-3 p-3 bg-card border border-white/5">
+                    <div key={amenity} className="flex items-center gap-3 p-3 bg-card border border-border/40">
                       <Icon className="w-5 h-5 text-primary" />
                       <span>{t(`amenity.${amenity}`)}</span>
                     </div>
@@ -289,7 +289,7 @@ export const PropertyDetailPage = () => {
                 <h2 className="text-2xl font-display font-medium mb-6">{t('detail.reviews')}</h2>
                 <div className="space-y-6">
                   {reviews.map((review) => (
-                    <div key={review.id} className="p-6 bg-card border border-white/5">
+                    <div key={review.id} className="p-6 bg-card border border-border/40">
                       <div className="flex items-center gap-2 mb-3">
                         {[...Array(5)].map((_, i) => (
                           <Star
@@ -308,7 +308,7 @@ export const PropertyDetailPage = () => {
             )}
 
             {/* WhatsApp Contact */}
-            <div className="p-6 bg-card border border-white/5">
+            <div className="p-6 bg-card border border-border/40">
               <h3 className="text-xl font-display font-medium mb-4">
                 {lang === 'it' ? 'Hai domande?' : 'Have questions?'}
               </h3>
@@ -350,7 +350,7 @@ export const PropertyDetailPage = () => {
                   disabled={[{ before: new Date() }, ...disabledDates]}
                   locale={dateLocale}
                   numberOfMonths={1}
-                  className="bg-card border border-white/10 p-3"
+                  className="bg-card border border-border/60 p-3"
                   data-testid="booking-calendar"
                 />
                 <p className="text-xs text-muted-foreground mt-2">
@@ -366,7 +366,7 @@ export const PropertyDetailPage = () => {
                 <select
                   value={guests}
                   onChange={(e) => setGuests(Number(e.target.value))}
-                  className="w-full bg-card border border-white/10 p-3 text-foreground"
+                  className="w-full bg-card border border-border/60 p-3 text-foreground"
                   data-testid="guests-select"
                 >
                   {[...Array(property.max_guests)].map((_, i) => (
@@ -411,7 +411,7 @@ export const PropertyDetailPage = () => {
 
               {/* Price Breakdown */}
               {priceBreakdown && (
-                <div className="border-t border-white/10 pt-6 space-y-3" data-testid="price-breakdown">
+                <div className="border-t border-border/60 pt-6 space-y-3" data-testid="price-breakdown">
                   <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
                     {t('detail.priceBreakdown')}
                   </h4>
@@ -441,7 +441,7 @@ export const PropertyDetailPage = () => {
                     <span>{t('detail.securityDeposit')}</span>
                     <span>€{priceBreakdown.security_deposit}</span>
                   </div>
-                  <div className="flex justify-between font-medium text-lg pt-3 border-t border-white/10">
+                  <div className="flex justify-between font-medium text-lg pt-3 border-t border-border/60">
                     <span>{t('detail.total')}</span>
                     <span className="text-primary">€{priceBreakdown.total}</span>
                   </div>

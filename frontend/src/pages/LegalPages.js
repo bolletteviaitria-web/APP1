@@ -11,7 +11,7 @@ export const PrivacyPage = () => {
           {lang === 'it' ? 'Informativa sulla Privacy' : 'Privacy Policy'}
         </h1>
 
-        <div className="prose prose-invert prose-lg max-w-none space-y-8 text-foreground/80">
+        <div className="prose prose prose-lg max-w-none space-y-8 text-foreground/80">
           {lang === 'it' ? (
             <>
               <section>
@@ -148,7 +148,7 @@ export const TermsPage = () => {
           {lang === 'it' ? 'Termini e Condizioni' : 'Terms and Conditions'}
         </h1>
 
-        <div className="prose prose-invert prose-lg max-w-none space-y-8 text-foreground/80">
+        <div className="prose prose prose-lg max-w-none space-y-8 text-foreground/80">
           {lang === 'it' ? (
             <>
               <section>

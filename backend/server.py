@@ -978,6 +978,74 @@ async def export_property_ical(property_id: str):
     )
 
 
+# ============ PROPERTY IMAGE UPLOAD ============
+
+@api_router.post("/admin/properties/upload-image")
+async def upload_property_image(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_admin)
+):
+    """Admin uploads a property image. Returns public URL."""
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in {"image/jpeg", "image/png", "image/webp", "image/heic"}:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, WEBP, HEIC images allowed")
+
+    data = await file.read()
+    if len(data) > MAX_DOC_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    image_id = str(uuid.uuid4())
+    ext = file.filename.split(".")[-1].lower() if file.filename and "." in file.filename else "jpg"
+    storage_path = f"{APP_NAME}/properties/{image_id}.{ext}"
+
+    try:
+        result = put_object(storage_path, data, content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Property image upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+    image_record = {
+        "id": image_id,
+        "storage_path": result["path"],
+        "original_filename": file.filename or f"{image_id}.{ext}",
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "is_deleted": False,
+        "uploaded_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.property_images.insert_one(image_record)
+
+    # Return public URL the admin form can drop straight into the property images array
+    return {
+        "id": image_id,
+        "url": f"/api/property-images/{image_id}",
+        "size": image_record["size"],
+        "filename": image_record["original_filename"]
+    }
+
+
+@app.get("/api/property-images/{image_id}")
+async def get_property_image(image_id: str):
+    """Public endpoint serving property images for <img src> usage."""
+    record = await db.property_images.find_one({"id": image_id, "is_deleted": False}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        data, ct = get_object(record["storage_path"])
+    except Exception as e:
+        logger.error(f"Property image fetch failed: {e}")
+        raise HTTPException(status_code=500, detail="Image unavailable")
+    return Response(
+        content=data,
+        media_type=record.get("content_type", ct),
+        headers={"Cache-Control": "public, max-age=86400"}
+    )
+
+
 # ============ GUEST ID DOCUMENT UPLOAD ============
 
 class BookingDocumentResponse(BaseModel):

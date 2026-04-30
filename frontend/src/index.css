@@ -2,185 +2,132 @@
 @tailwind components;
 @tailwind utilities;
 
-@import '@fontsource/playfair-display/400.css';
-@import '@fontsource/playfair-display/500.css';
-@import '@fontsource/playfair-display/600.css';
-@import '@fontsource/playfair-display/700.css';
-@import '@fontsource/manrope/300.css';
-@import '@fontsource/manrope/400.css';
-@import '@fontsource/manrope/500.css';
-@import '@fontsource/manrope/600.css';
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Manrope:wght@300;400;500;600;700&display=swap');
 @import '@fontsource/jetbrains-mono/400.css';
 
 @layer base {
     :root {
-        --background: 222 47% 2%;
-        --foreground: 210 40% 98%;
-        --card: 222 39% 5%;
-        --card-foreground: 215 25% 90%;
-        --popover: 222 39% 5%;
-        --popover-foreground: 215 25% 90%;
-        --primary: 43 66% 52%;
-        --primary-foreground: 222 47% 2%;
-        --secondary: 217 33% 17%;
-        --secondary-foreground: 210 40% 98%;
-        --muted: 217 33% 17%;
-        --muted-foreground: 215 20% 65%;
-        --accent: 217 33% 17%;
-        --accent-foreground: 43 66% 52%;
-        --destructive: 0 63% 31%;
-        --destructive-foreground: 210 40% 98%;
-        --border: 217 33% 17%;
-        --input: 217 33% 17%;
-        --ring: 43 66% 52%;
+        /* TerracitoAppartments — Mediterranean Light Luxury */
+        --background: 42 33% 96%;          /* #F6F4F0 creamy sand */
+        --foreground: 222 25% 15%;         /* #1E232B charcoal */
+        --card: 0 0% 100%;                 /* pure white */
+        --card-foreground: 222 25% 15%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 25% 15%;
+        --primary: 21 65% 52%;             /* #D26A45 terracotta */
+        --primary-foreground: 0 0% 100%;
+        --secondary: 65 14% 88%;           /* soft olive/sage */
+        --secondary-foreground: 222 25% 15%;
+        --muted: 42 25% 92%;               /* warm sand */
+        --muted-foreground: 215 12% 42%;
+        --accent: 195 35% 88%;             /* sea-blue touch */
+        --accent-foreground: 222 25% 15%;
+        --destructive: 0 70% 48%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 42 18% 84%;
+        --input: 42 18% 84%;
+        --ring: 21 65% 52%;
         --radius: 0px;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
+
+        /* Brand tokens */
+        --terracotta: 21 65% 52%;
+        --terracotta-deep: 14 60% 38%;
+        --olive: 80 18% 38%;
+        --sand: 42 30% 90%;
+        --sea: 195 45% 55%;
+        --gold-soft: 38 55% 58%;
     }
 }
 
 @layer base {
-    * {
-        @apply border-border;
-    }
-    
-    html {
-        scroll-behavior: smooth;
-    }
-    
+    * { @apply border-border; }
+    html { scroll-behavior: smooth; }
     body {
-        @apply bg-background text-foreground font-light;
+        @apply bg-background text-foreground;
         font-family: 'Manrope', system-ui, sans-serif;
+        font-weight: 400;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
-    
     h1, h2, h3, h4, h5, h6 {
-        font-family: 'Playfair Display', Georgia, serif;
-        @apply font-medium tracking-tight;
+        font-family: 'Cormorant Garamond', Georgia, serif;
+        @apply font-light tracking-tight;
+        letter-spacing: -0.01em;
     }
-    
-    code, pre {
-        font-family: 'JetBrains Mono', monospace;
-    }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
 }
 
 @layer components {
+    /* Crystal-clear navbar / surface */
     .glass {
-        @apply bg-[#0B0F17]/70 backdrop-blur-xl border border-white/10 shadow-2xl;
+        @apply bg-white/75 backdrop-blur-xl border border-border/40 shadow-[0_2px_24px_-12px_rgba(30,35,43,0.08)];
     }
-    
-    .gold-glow {
-        box-shadow: 0 0 40px -10px rgba(212, 175, 55, 0.3);
+
+    .surface-card {
+        @apply bg-card border border-border/60 shadow-[0_1px_2px_rgba(30,35,43,0.04)];
     }
-    
+
+    .terracotta-glow {
+        box-shadow: 0 14px 40px -18px hsl(var(--terracotta) / 0.45);
+    }
+
     .text-gradient {
-        @apply bg-clip-text text-transparent bg-gradient-to-r from-[#D4AF37] to-[#FCD34D];
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-[hsl(var(--terracotta))] to-[hsl(var(--gold-soft))];
     }
-    
+
     .btn-primary {
-        @apply bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8 uppercase tracking-widest text-xs font-bold transition-all duration-300;
+        @apply inline-flex items-center justify-center bg-primary text-primary-foreground hover:bg-[hsl(var(--terracotta-deep))] h-12 px-8 uppercase tracking-[0.18em] text-xs font-semibold transition-all duration-300 shadow-sm;
     }
-    
+
     .btn-secondary {
-        @apply bg-transparent border border-white/20 text-foreground hover:bg-white/5 h-12 px-8 uppercase tracking-widest text-xs font-bold transition-all duration-300;
+        @apply inline-flex items-center justify-center bg-transparent border border-foreground/20 text-foreground hover:bg-foreground/5 h-12 px-8 uppercase tracking-[0.18em] text-xs font-semibold transition-all duration-300;
     }
-    
+
     .input-luxury {
-        @apply bg-transparent border-b border-white/20 rounded-none px-0 py-4 focus:border-[#D4AF37] focus:outline-none transition-colors placeholder:text-muted-foreground/50;
+        @apply bg-transparent border-b border-foreground/15 rounded-none px-0 py-3 focus:border-primary focus:outline-none transition-colors placeholder:text-muted-foreground/60;
     }
-    
+
     .card-property {
-        @apply relative overflow-hidden bg-card border-0;
+        @apply relative overflow-hidden bg-card border border-border/60 transition-all duration-500;
     }
-    
+    .card-property:hover {
+        @apply border-primary/40 shadow-[0_24px_60px_-30px_rgba(210,106,69,0.45)];
+    }
+
     .card-feature {
-        @apply bg-card/50 border border-white/5 p-8 hover:border-[#D4AF37]/30 transition-colors duration-500;
+        @apply bg-card border border-border/60 p-8 transition-all duration-500 hover:border-primary/35 hover:shadow-[0_18px_40px_-25px_rgba(30,35,43,0.18)];
     }
-    
+
     .overline {
-        @apply uppercase tracking-[0.2em] text-xs text-primary;
+        @apply uppercase tracking-[0.22em] text-[11px] font-medium text-primary;
     }
-    
-    .link-underline {
-        @apply relative;
-    }
-    
+
+    .link-underline { @apply relative; }
     .link-underline::after {
         content: '';
-        @apply absolute bottom-0 left-0 w-0 h-px bg-primary transition-all duration-300;
+        @apply absolute -bottom-1 left-0 w-0 h-px bg-primary transition-all duration-300;
     }
-    
-    .link-underline:hover::after {
-        @apply w-full;
+    .link-underline:hover::after { @apply w-full; }
+
+    .grain-overlay::before {
+        content: '';
+        position: absolute; inset: 0; pointer-events: none; opacity: .035;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     }
 }
 
 @layer utilities {
-    .animate-fade-in {
-        animation: fadeIn 0.5s ease-out forwards;
-    }
-    
-    .animate-slide-up {
-        animation: slideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-    
-    .animate-scale-in {
-        animation: scaleIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @keyframes slideUp {
-        from { 
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        to { 
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    @keyframes scaleIn {
-        from { 
-            opacity: 0;
-            transform: scale(0.95);
-        }
-        to { 
-            opacity: 1;
-            transform: scale(1);
-        }
-    }
+    .animate-fade-in   { animation: fadeIn 0.5s ease-out forwards; }
+    .animate-slide-up  { animation: slideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    .animate-scale-in  { animation: scaleIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: hsl(var(--muted)); }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.6); }
 
-::-webkit-scrollbar-track {
-    background: #020408;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #1E293B;
-    border-radius: 0;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #D4AF37;
-}
-
-/* Selection styling */
-::selection {
-    background: rgba(212, 175, 55, 0.3);
-    color: #F8FAFC;
-}
+::selection { background: hsl(var(--primary) / 0.22); color: hsl(var(--foreground)); }

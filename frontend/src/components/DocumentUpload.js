@@ -84,7 +84,7 @@ export const DocumentUpload = ({ bookingId }) => {
         <select
           value={docType}
           onChange={(e) => setDocType(e.target.value)}
-          className="flex-1 bg-transparent border border-white/10 px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary/50"
+          className="flex-1 bg-transparent border border-border/60 px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary/50"
           data-testid="doc-type-select"
         >
           {DOC_TYPES.map((d) => (
@@ -119,7 +119,7 @@ export const DocumentUpload = ({ bookingId }) => {
       </div>
 
       {docs.length > 0 && (
-        <ul className="space-y-2 pt-2 border-t border-white/5" data-testid="doc-list">
+        <ul className="space-y-2 pt-2 border-t border-border/40" data-testid="doc-list">
           {docs.map((d) => {
             const typeLabel = DOC_TYPES.find((t) => t.value === d.document_type);
             return (

@@ -41,7 +41,7 @@ export const HomePage = () => {
   return (
     <div className="min-h-screen" data-testid="home-page">
       {/* Hero Section */}
-      <section className="relative h-screen flex items-center" data-testid="hero-section">
+      <section className="relative h-screen flex items-center text-white" data-testid="hero-section">
         {/* Background Image */}
         <div className="absolute inset-0">
           <img
@@ -49,17 +49,18 @@ export const HomePage = () => {
             alt="Luxury Villa"
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#020408]/90 via-[#020408]/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#1E232B]/80 via-[#1E232B]/55 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/40 to-transparent" />
         </div>
 
         {/* Content */}
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8 pt-20">
           <div className="max-w-2xl animate-slide-up">
-            <span className="overline mb-6 block">{t('hero.overline')}</span>
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-medium leading-tight mb-6">
+            <span className="overline mb-6 block text-[hsl(var(--gold-soft))]">{t('hero.overline')}</span>
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-light leading-[1.05] mb-6">
               {t('hero.title')}
             </h1>
-            <p className="text-lg text-foreground/70 mb-10 max-w-xl">
+            <p className="text-lg text-white/85 mb-10 max-w-xl font-light">
               {t('hero.subtitle')}
             </p>
             <Link to="/properties" data-testid="hero-cta">
@@ -72,9 +73,9 @@ export const HomePage = () => {
         </div>
 
         {/* Scroll Indicator */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-foreground/50">
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/60">
           <span className="text-xs uppercase tracking-widest">Scroll</span>
-          <div className="w-px h-12 bg-gradient-to-b from-foreground/50 to-transparent" />
+          <div className="w-px h-12 bg-gradient-to-b from-white/60 to-transparent" />
         </div>
       </section>
 
@@ -191,26 +192,26 @@ export const PropertyCard = ({ property, lang, index = 0 }) => {
           alt={translation.title}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#020408]/80 via-transparent to-transparent" />
-        
+        <div className="absolute inset-0 bg-gradient-to-t from-[#1E232B]/85 via-[#1E232B]/15 to-transparent" />
+
         {/* Rating Badge */}
         {property.average_rating > 0 && (
-          <div className="absolute top-4 right-4 glass px-3 py-1.5 flex items-center gap-1.5">
+          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1.5 flex items-center gap-1.5 shadow-sm">
             <Star className="w-4 h-4 text-primary fill-primary" />
-            <span className="text-sm font-medium">{property.average_rating}</span>
+            <span className="text-sm font-medium text-foreground">{property.average_rating}</span>
           </div>
         )}
 
         {/* Info Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-6">
-          <div className="flex items-center gap-2 text-foreground/70 text-sm mb-2">
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+          <div className="flex items-center gap-2 text-white/85 text-sm mb-2">
             <MapPin className="w-4 h-4" />
             <span>{property.location.city}, {property.location.region}</span>
           </div>
-          <h3 className="text-2xl font-display font-medium mb-3">
+          <h3 className="text-2xl font-display font-medium mb-3 text-white">
             {translation.title}
           </h3>
-          <div className="flex items-center gap-4 text-sm text-foreground/70">
+          <div className="flex items-center gap-4 text-sm text-white/85">
             <span className="flex items-center gap-1">
               <Users className="w-4 h-4" />
               {property.max_guests} {t('properties.guests')}
@@ -228,7 +229,7 @@ export const PropertyCard = ({ property, lang, index = 0 }) => {
       </div>
 
       {/* Price Bar */}
-      <div className="bg-card p-4 flex items-center justify-between border-t border-white/5">
+      <div className="bg-card p-4 flex items-center justify-between border-t border-border/40">
         <div>
           <span className="text-muted-foreground text-sm">{t('properties.from')}</span>
           <span className="text-xl font-display font-medium text-primary ml-2">

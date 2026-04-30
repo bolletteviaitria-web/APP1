@@ -121,7 +121,7 @@ export const Navbar = () => {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="md:hidden glass border-t border-white/10">
+        <div className="md:hidden glass border-t border-border/60">
           <div className="px-6 py-4 space-y-4">
             <Link 
               to="/properties" 
@@ -137,7 +137,7 @@ export const Navbar = () => {
             >
               {t('nav.contact')}
             </Link>
-            <div className="flex items-center gap-4 pt-4 border-t border-white/10">
+            <div className="flex items-center gap-4 pt-4 border-t border-border/60">
               <Button variant="ghost" size="sm" onClick={toggleLanguage}>
                 <Globe className="h-4 w-4 mr-1" />
                 {i18n.language.toUpperCase()}
@@ -166,7 +166,7 @@ export const Footer = () => {
   const whatsappNumber = '+393445361830';
 
   return (
-    <footer className="bg-card border-t border-white/5" data-testid="footer">
+    <footer className="bg-card border-t border-border/40" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
           {/* Brand */}
@@ -228,7 +228,7 @@ export const Footer = () => {
           </div>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-white/5 text-center text-muted-foreground text-sm">
+        <div className="mt-12 pt-8 border-t border-border/40 text-center text-muted-foreground text-sm">
           © {currentYear} TerracitoAppartments. {t('footer.rights')}
         </div>
       </div>

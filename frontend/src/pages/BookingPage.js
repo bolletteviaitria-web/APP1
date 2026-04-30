@@ -162,7 +162,7 @@ export const BookingPage = () => {
                 <h2 className="text-xl font-display font-medium">{t('booking.paymentMethod')}</h2>
                 
                 <RadioGroup value={paymentType} onValueChange={setPaymentType}>
-                  <label className="flex items-center gap-4 p-4 border border-white/10 cursor-pointer hover:border-primary/30 transition-colors">
+                  <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
                     <RadioGroupItem value="full" id="full" data-testid="payment-full" />
                     <div className="flex-1">
                       <p className="font-medium">{t('booking.payFull')}</p>
@@ -171,7 +171,7 @@ export const BookingPage = () => {
                     <Check className={`w-5 h-5 ${paymentType === 'full' ? 'text-primary' : 'text-transparent'}`} />
                   </label>
                   
-                  <label className="flex items-center gap-4 p-4 border border-white/10 cursor-pointer hover:border-primary/30 transition-colors">
+                  <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
                     <RadioGroupItem value="deposit" id="deposit" data-testid="payment-deposit" />
                     <div className="flex-1">
                       <p className="font-medium">{t('booking.payDeposit')}</p>
@@ -225,7 +225,7 @@ export const BookingPage = () => {
                 </div>
               </div>
 
-              <div className="border-t border-white/10 pt-4 space-y-2 text-sm">
+              <div className="border-t border-border/60 pt-4 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t('detail.checkIn')}</span>
                   <span>{format(dateRange.from, 'dd MMM yyyy')}</span>
@@ -244,7 +244,7 @@ export const BookingPage = () => {
                 </div>
               </div>
 
-              <div className="border-t border-white/10 pt-4">
+              <div className="border-t border-border/60 pt-4">
                 <div className="flex justify-between font-medium text-lg">
                   <span>{t('detail.total')}</span>
                   <span className="text-primary">€{priceBreakdown.total}</span>

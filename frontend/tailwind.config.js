@@ -8,8 +8,10 @@ module.exports = {
     theme: {
         extend: {
             fontFamily: {
-                'display': ['Playfair Display', 'Georgia', 'serif'],
+                'display': ['"Cormorant Garamond"', 'Georgia', 'serif'],
+                'serif': ['"Cormorant Garamond"', 'Georgia', 'serif'],
                 'body': ['Manrope', 'system-ui', 'sans-serif'],
+                'sans': ['Manrope', 'system-ui', 'sans-serif'],
                 'mono': ['JetBrains Mono', 'monospace'],
             },
             borderRadius: {
@@ -51,8 +53,14 @@ module.exports = {
                 border: 'hsl(var(--border))',
                 input: 'hsl(var(--input))',
                 ring: 'hsl(var(--ring))',
-                gold: '#D4AF37',
-                obsidian: '#020408',
+                terracotta: {
+                    DEFAULT: 'hsl(var(--terracotta))',
+                    deep: 'hsl(var(--terracotta-deep))',
+                },
+                olive: 'hsl(var(--olive))',
+                sand: 'hsl(var(--sand))',
+                sea: 'hsl(var(--sea))',
+                'gold-soft': 'hsl(var(--gold-soft))',
             },
             keyframes: {
                 'accordion-down': {

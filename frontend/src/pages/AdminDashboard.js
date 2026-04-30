@@ -19,9 +19,17 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
 } from '../components/ui/dialog';
 import { toast } from 'sonner';
+import { PropertyFormDialog } from '../components/PropertyFormDialog';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+const resolveImageUrl = (src) => {
+  if (!src) return '';
+  if (src.startsWith('http')) return src;
+  if (src.startsWith('/api/')) return `${BACKEND_URL}${src}`;
+  return src;
+};
 
 export const AdminDashboard = () => {
   const { user, isAdmin, loading: authLoading } = useAuth();
@@ -42,6 +50,24 @@ export const AdminDashboard = () => {
   // Booking docs viewer
   const [docsBookingId, setDocsBookingId] = useState(null);
   const [bookingDocs, setBookingDocs] = useState([]);
+  // Property form dialog
+  const [propertyFormOpen, setPropertyFormOpen] = useState(false);
+  const [editingProperty, setEditingProperty] = useState(null);
+
+  const openNewProperty = () => { setEditingProperty(null); setPropertyFormOpen(true); };
+  const openEditProperty = (p) => { setEditingProperty(p); setPropertyFormOpen(true); };
+  const deleteProperty = async (p) => {
+    if (!window.confirm(lang === 'it'
+      ? `Eliminare definitivamente "${p.translations?.it?.title || p.slug}"?`
+      : `Permanently delete "${p.translations?.en?.title || p.slug}"?`)) return;
+    try {
+      await axios.delete(`${API}/properties/${p.id}`);
+      toast.success(lang === 'it' ? 'Proprietà eliminata' : 'Property deleted');
+      fetchData();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && isAdmin) {
@@ -184,7 +210,7 @@ export const AdminDashboard = () => {
     <div className="min-h-screen pt-20" data-testid="admin-dashboard">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 min-h-[calc(100vh-5rem)] bg-card border-r border-white/5 p-6" data-testid="admin-sidebar">
+        <aside className="w-64 min-h-[calc(100vh-5rem)] bg-card border-r border-border/40 p-6" data-testid="admin-sidebar">
           <h2 className="text-xl font-display font-medium mb-6">Admin</h2>
           <nav className="space-y-2">
             {tabs.map((tab) => (
@@ -263,7 +289,7 @@ export const AdminDashboard = () => {
                   {dashboardData.upcoming_checkins.length > 0 ? (
                     <div className="space-y-3">
                       {dashboardData.upcoming_checkins.map((booking) => (
-                        <div key={booking.id} className="flex items-center justify-between p-3 bg-card border border-white/5">
+                        <div key={booking.id} className="flex items-center justify-between p-3 bg-card border border-border/40">
                           <div>
                             <p className="font-medium">{booking.guest_name}</p>
                             <p className="text-sm text-muted-foreground">{booking.check_in}</p>
@@ -282,7 +308,7 @@ export const AdminDashboard = () => {
                   {dashboardData.upcoming_checkouts.length > 0 ? (
                     <div className="space-y-3">
                       {dashboardData.upcoming_checkouts.map((booking) => (
-                        <div key={booking.id} className="flex items-center justify-between p-3 bg-card border border-white/5">
+                        <div key={booking.id} className="flex items-center justify-between p-3 bg-card border border-border/40">
                           <div>
                             <p className="font-medium">{booking.guest_name}</p>
                             <p className="text-sm text-muted-foreground">{booking.check_out}</p>
@@ -305,7 +331,7 @@ export const AdminDashboard = () => {
                   </h3>
                   <div className="space-y-3">
                     {dashboardData.recent_contacts.map((contact) => (
-                      <div key={contact.id} className="p-3 bg-card border border-white/5">
+                      <div key={contact.id} className="p-3 bg-card border border-border/40">
                         <div className="flex items-center justify-between mb-2">
                           <p className="font-medium">{contact.name}</p>
                           <span className="text-xs text-muted-foreground">{contact.email}</span>
@@ -324,12 +350,18 @@ export const AdminDashboard = () => {
             <div className="space-y-6" data-testid="properties-content">
               <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-display font-medium">{t('admin.properties')}</h1>
-                <Button onClick={fetchData} variant="ghost" size="icon">
-                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={openNewProperty} className="btn-primary" data-testid="new-property-btn">
+                    <Plus className="w-4 h-4 mr-2" />
+                    {lang === 'it' ? 'Nuova Proprietà' : 'New Property'}
+                  </Button>
+                  <Button onClick={fetchData} variant="ghost" size="icon">
+                    <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
               </div>
 
-              <div className="glass overflow-hidden">
+              <div className="surface-card overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -345,15 +377,18 @@ export const AdminDashboard = () => {
                     {properties.map((property) => {
                       const translation = property.translations[lang] || property.translations['it'];
                       return (
-                        <TableRow key={property.id}>
+                        <TableRow key={property.id} data-testid={`property-row-${property.slug}`}>
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <img
-                                src={property.images[0]}
+                                src={resolveImageUrl(property.images[0])}
                                 alt={translation.title}
                                 className="w-12 h-12 object-cover"
                               />
-                              <span className="font-medium">{translation.title}</span>
+                              <div>
+                                <p className="font-medium">{translation.title}</p>
+                                <p className="text-xs text-muted-foreground">{property.slug}</p>
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>{property.location.city}</TableCell>
@@ -371,12 +406,31 @@ export const AdminDashboard = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                               <Link to={`/property/${property.slug}`} target="_blank">
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" title={lang === 'it' ? 'Apri sito' : 'Open site'}>
                                   <ExternalLink className="w-4 h-4" />
                                 </Button>
                               </Link>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditProperty(property)}
+                                title={lang === 'it' ? 'Modifica' : 'Edit'}
+                                data-testid={`edit-property-${property.slug}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteProperty(property)}
+                                className="text-destructive hover:text-destructive/80"
+                                title={lang === 'it' ? 'Elimina' : 'Delete'}
+                                data-testid={`delete-property-${property.slug}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -384,6 +438,11 @@ export const AdminDashboard = () => {
                     })}
                   </TableBody>
                 </Table>
+                {properties.length === 0 && (
+                  <div className="p-12 text-center text-muted-foreground">
+                    {lang === 'it' ? 'Nessuna proprietà. Creane una.' : 'No properties yet. Create one.'}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -574,7 +633,7 @@ export const AdminDashboard = () => {
                 </h3>
                 <div className="space-y-2">
                   {properties.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-white/5 last:border-0">
+                    <div key={p.id} className="flex items-center justify-between gap-3 text-sm py-2 border-b border-border/40 last:border-0">
                       <span className="font-medium truncate">
                         {p.translations?.[lang]?.title || p.translations?.it?.title || p.slug}
                       </span>
@@ -603,7 +662,7 @@ export const AdminDashboard = () => {
                   <select
                     value={newSync.property_id}
                     onChange={(e) => setNewSync({ ...newSync, property_id: e.target.value })}
-                    className="bg-transparent border border-white/10 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+                    className="bg-transparent border border-border/60 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
                     data-testid="sync-property-select"
                   >
                     <option value="" className="bg-card">
@@ -618,7 +677,7 @@ export const AdminDashboard = () => {
                   <select
                     value={newSync.platform}
                     onChange={(e) => setNewSync({ ...newSync, platform: e.target.value })}
-                    className="bg-transparent border border-white/10 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
+                    className="bg-transparent border border-border/60 px-3 py-2 text-sm focus:outline-none focus:border-primary/50"
                     data-testid="sync-platform-select"
                   >
                     <option value="airbnb" className="bg-card">Airbnb</option>
@@ -630,7 +689,7 @@ export const AdminDashboard = () => {
                     value={newSync.ical_url}
                     onChange={(e) => setNewSync({ ...newSync, ical_url: e.target.value })}
                     placeholder="https://..../calendar.ics"
-                    className="md:col-span-2 bg-transparent border-white/10"
+                    className="md:col-span-2 bg-transparent border-border/60"
                     data-testid="sync-url-input"
                   />
                 </div>
@@ -725,7 +784,7 @@ export const AdminDashboard = () => {
 
         {/* Booking Documents Dialog */}
         <Dialog open={!!docsBookingId} onOpenChange={(open) => !open && setDocsBookingId(null)}>
-          <DialogContent className="bg-card border-white/10 max-w-lg" data-testid="booking-docs-dialog">
+          <DialogContent className="bg-card border-border/60 max-w-lg" data-testid="booking-docs-dialog">
             <DialogHeader>
               <DialogTitle className="font-display">
                 {lang === 'it' ? 'Documenti Ospite' : 'Guest Documents'}
@@ -738,7 +797,7 @@ export const AdminDashboard = () => {
                 </p>
               )}
               {bookingDocs.map((d) => (
-                <div key={d.id} className="flex items-center justify-between p-3 border border-white/10">
+                <div key={d.id} className="flex items-center justify-between p-3 border border-border/60">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{d.original_filename}</p>
                     <p className="text-xs text-muted-foreground">
@@ -758,6 +817,14 @@ export const AdminDashboard = () => {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Property Create / Edit Form Dialog */}
+        <PropertyFormDialog
+          open={propertyFormOpen}
+          onOpenChange={setPropertyFormOpen}
+          property={editingProperty}
+          onSaved={fetchData}
+        />
       </div>
     </div>
   );

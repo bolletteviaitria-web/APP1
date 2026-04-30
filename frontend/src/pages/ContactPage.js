@@ -40,7 +40,7 @@ export const ContactPage = () => {
   return (
     <div className="min-h-screen pt-20" data-testid="contact-page">
       {/* Header */}
-      <section className="bg-card py-16 border-b border-white/5">
+      <section className="bg-card py-16 border-b border-border/40">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 text-center">
           <span className="overline mb-4 block">{t('hero.overline')}</span>
           <h1 className="text-4xl sm:text-5xl font-display font-medium mb-4">
