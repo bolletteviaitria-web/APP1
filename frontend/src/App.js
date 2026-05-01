@@ -7,7 +7,7 @@ import { HomePage } from "./pages/HomePage";
 import { PropertiesPage } from "./pages/PropertiesPage";
 import { PropertyDetailPage } from "./pages/PropertyDetailPage";
 import { BookingPage, BookingSuccessPage } from "./pages/BookingPage";
-import { LoginPage, RegisterPage } from "./pages/AuthPages";
+import { LoginPage } from "./pages/AuthPages";
 import { ContactPage } from "./pages/ContactPage";
 import { PrivacyPage, TermsPage } from "./pages/LegalPages";
 import { AdminDashboard } from "./pages/AdminDashboard";
@@ -27,7 +27,6 @@ function App() {
               <Route path="/booking" element={<BookingPage />} />
               <Route path="/booking/success" element={<BookingSuccessPage />} />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />

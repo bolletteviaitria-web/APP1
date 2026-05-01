@@ -138,14 +138,9 @@ export const Navbar = () => {
                 {i18n.language.toUpperCase()}
               </Button>
               {!user && (
-                <>
-                  <Link to="/login" onClick={() => setIsOpen(false)}>
-                    <Button variant="ghost" size="sm">{t('nav.login')}</Button>
-                  </Link>
-                  <Link to="/register" onClick={() => setIsOpen(false)}>
-                    <Button size="sm" className="btn-primary">{t('nav.register')}</Button>
-                  </Link>
-                </>
+                <Link to="/login" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" size="sm">{t('nav.login')}</Button>
+                </Link>
               )}
             </div>
           </div>
