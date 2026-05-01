@@ -456,11 +456,38 @@ export const PropertyDetailPage = () => {
           <div className="lg:col-span-1">
             <div className="sticky top-28 glass p-6 space-y-6" data-testid="booking-sidebar">
               {/* Price Display */}
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-medium text-primary">
-                  €{property.pricing.base_price}
-                </span>
-                <span className="text-muted-foreground">{t('properties.perNight')}</span>
+              <div className="space-y-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-display font-medium text-primary">
+                    €{property.pricing.base_price}
+                  </span>
+                  <span className="text-muted-foreground">{t('properties.perNight')}</span>
+                </div>
+
+                {/* Long-stay discount hints */}
+                {(property.pricing.weekly_discount > 0 || property.pricing.monthly_discount > 0) && (
+                  <div className="flex flex-wrap gap-2 pt-1" data-testid="long-stay-discounts">
+                    {property.pricing.weekly_discount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-primary/10 text-primary border border-primary/20">
+                        <span className="font-semibold">−{property.pricing.weekly_discount}%</span>
+                        <span>{lang === 'it' ? 'soggiorni 7+ notti' : 'stays 7+ nights'}</span>
+                      </span>
+                    )}
+                    {property.pricing.monthly_discount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-primary/10 text-primary border border-primary/20">
+                        <span className="font-semibold">−{property.pricing.monthly_discount}%</span>
+                        <span>{lang === 'it' ? 'soggiorni 28+ notti' : 'stays 28+ nights'}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {(property.pricing.weekly_discount > 0 || property.pricing.monthly_discount > 0) && (
+                  <p className="text-xs text-muted-foreground pt-1">
+                    {lang === 'it'
+                      ? 'Lo sconto viene applicato automaticamente in fase di prenotazione.'
+                      : 'The discount is applied automatically at checkout.'}
+                  </p>
+                )}
               </div>
 
               {/* Calendar */}
