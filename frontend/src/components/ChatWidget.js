@@ -290,8 +290,8 @@ export const ChatWidget = () => {
               </div>
               <p className="text-sm text-muted-foreground">
                 {t(
-                  'Ciao! Sono l\u2019assistente virtuale. Posso aiutarti con check-in, Wi-Fi, parcheggio, indirizzo e altro.',
-                  'Hi! I\u2019m the virtual assistant. I can help with check-in, Wi-Fi, parking, address and more.'
+                  'Ciao! Sono l\u2019assistente virtuale. Posso aiutarti per verificare la disponibilità, darti i prezzi e procedere con la prenotazione. Inoltre ti darò tutte le info necessarie per quanto riguarda il check-in, Wi-Fi, parcheggio, indirizzo e altro.',
+                  'Hi! I\u2019m the virtual assistant. I can help you check availability, give prices, and complete your booking. I can also provide all the info you need about check-in, Wi-Fi, parking, address and more.'
                 )}
               </p>
             </div>
