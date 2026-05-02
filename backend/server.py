@@ -617,10 +617,15 @@ async def update_booking_status(
 
 @api_router.get("/properties/{property_id}/availability")
 async def get_availability(property_id: str, month: Optional[str] = None):
-    property_doc = await db.properties.find_one({"id": property_id}, {"_id": 0})
+    # Resolve by UUID or slug so the route works with /property/<slug> URLs.
+    property_doc = await db.properties.find_one(
+        {"$or": [{"id": property_id}, {"slug": property_id}]},
+        {"_id": 0}
+    )
     if not property_doc:
         raise HTTPException(status_code=404, detail="Property not found")
-    
+    real_id = property_doc["id"]
+
     if month:
         start_date = datetime.fromisoformat(f"{month}-01")
     else:
@@ -629,7 +634,7 @@ async def get_availability(property_id: str, month: Optional[str] = None):
     end_date = start_date + timedelta(days=90)
     
     bookings = await db.bookings.find({
-        "property_id": property_id,
+        "property_id": real_id,
         "status": {"$in": ["pending", "confirmed"]},
         "check_in": {"$lte": end_date.isoformat()},
         "check_out": {"$gte": start_date.isoformat()}
@@ -637,7 +642,7 @@ async def get_availability(property_id: str, month: Optional[str] = None):
     
     # Get iCal blocked dates from cached events (synced by background scheduler)
     cached_events = await db.ical_events.find({
-        "property_id": property_id,
+        "property_id": real_id,
         "end_date": {"$gte": start_date.date().isoformat()}
     }, {"_id": 0}).to_list(500)
     blocked_dates = [
@@ -651,10 +656,10 @@ async def get_availability(property_id: str, month: Optional[str] = None):
     ]
 
     # iCal sync metadata
-    sync_meta = await db.ical_syncs.find({"property_id": property_id}, {"_id": 0}).to_list(10)
+    sync_meta = await db.ical_syncs.find({"property_id": real_id}, {"_id": 0}).to_list(10)
 
     return {
-        "property_id": property_id,
+        "property_id": real_id,
         "bookings": bookings,
         "blocked_dates": blocked_dates,
         "syncs": [
@@ -2048,6 +2053,20 @@ async def startup_app():
         logger.info("Object storage initialized")
     except Exception as e:
         logger.error(f"Object storage init failed at startup: {e}")
+
+    # Auto-seed the 5 demo properties + admin on a FRESH database only.
+    # Idempotent: if any property already exists, the seed is skipped so we
+    # never clobber data the user has already created or customised.
+    try:
+        existing = await db.properties.count_documents({})
+        if existing == 0:
+            logger.info("[Seed] Empty properties collection detected — running demo seed")
+            await seed_demo_data()
+            logger.info("[Seed] Demo seed completed successfully")
+        else:
+            logger.info(f"[Seed] Skipping (properties already present: {existing})")
+    except Exception as e:
+        logger.error(f"[Seed] Startup seed failed (non-fatal): {e}")
 
     # Start iCal background scheduler (every 30 min)
     try:

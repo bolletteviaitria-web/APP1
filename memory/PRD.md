@@ -56,6 +56,8 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-02** — Iteration 10: **Bug fix produzione + iCal availability**. (a) **Auto-seed on startup**: `startup_app()` ora popola automaticamente il DB con le 5 case demo + account admin SOLO se la collection `properties` è vuota. Risolve il problema "proprietà sparite dopo il deployment" (il DB di produzione era separato dal preview e non aveva mai ricevuto il seed). Idempotente: se ci sono già proprietà personalizzate il seed è skippato. (b) **Bug critico iCal calendar**: l'endpoint `GET /api/properties/{id}/availability` cercava solo per UUID ma il frontend passa lo **slug** → restituiva 404 e il calendario non mostrava mai le prenotazioni sincronizzate. Fix: risolto via `$or: [{id}, {slug}]` e usato `real_id` in tutte le query sottostanti (bookings, ical_events, ical_syncs). Verificato end-to-end con feed bed-booking.com reale: 24 prenotazioni importate, 21 date bloccate correttamente visualizzate in rosso chiaro sul calendario maggio 2026.
+
 - **2026-04-30** — Iteration 1 (handoff): MVP completo VacayStay, Stripe, WhatsApp, Admin base, seed 5 properties.
 - **2026-04-30** — Iteration 2: Rebrand → TerracitoAppartments. iCal scheduler bidirezionale (APScheduler + export pubblico). Upload documenti d'identità ospiti via Emergent Object Storage. 23/23 backend tests green.
 - **2026-04-30** — Iteration 3: Light Mediterranean theme (Cormorant Garamond, terracotta su cream). Admin Property CRUD completo con upload immagini. 36/36 backend tests green.
