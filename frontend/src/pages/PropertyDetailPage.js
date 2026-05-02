@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
-import { format, addDays, differenceInDays, parseISO } from 'date-fns';
+import { format, addDays, differenceInDays, parseISO, startOfToday } from 'date-fns';
 import { it, enUS } from 'date-fns/locale';
 import {
   Star, MapPin, Users, BedDouble, Bath, ChevronLeft, ChevronRight,
@@ -136,6 +136,30 @@ export const PropertyDetailPage = () => {
     () => [{ before: new Date() }, ...disabledDates],
     [disabledDates]
   );
+
+  // Quick ISO-date lookup so the modifiers functions stay O(1).
+  const disabledIsoSet = useMemo(() => {
+    const s = new Set();
+    disabledDates.forEach((d) => s.add(format(d, 'yyyy-MM-dd')));
+    return s;
+  }, [disabledDates]);
+
+  // Highlight modifiers: green for bookable days, red for booked/blocked (future).
+  const calendarModifiers = useMemo(() => {
+    const today = startOfToday();
+    return {
+      unavailable: (date) =>
+        date >= today && disabledIsoSet.has(format(date, 'yyyy-MM-dd')),
+      available: (date) =>
+        date >= today && !disabledIsoSet.has(format(date, 'yyyy-MM-dd'))
+    };
+  }, [disabledIsoSet]);
+
+  // tailwind `!` prefix bumps specificity over the base `day` + `day_disabled` classes.
+  const calendarModifiersClassNames = {
+    unavailable: '!bg-red-100 !text-red-700 !line-through !opacity-100 hover:!bg-red-100',
+    available: '!bg-green-50 !text-green-900 hover:!bg-green-100'
+  };
 
   const handleProceedToBooking = () => {
     if (!dateRange.from || !dateRange.to || !priceBreakdown) return;
@@ -500,11 +524,24 @@ export const PropertyDetailPage = () => {
                   selected={dateRange}
                   onSelect={setDateRange}
                   disabled={calendarDisabledRules}
+                  modifiers={calendarModifiers}
+                  modifiersClassNames={calendarModifiersClassNames}
                   locale={dateLocale}
                   numberOfMonths={1}
                   className="bg-card border border-border/60 p-3"
                   data-testid="booking-calendar"
                 />
+                {/* Legend: green = available, red = booked/blocked */}
+                <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground" data-testid="calendar-legend">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 bg-green-50 border border-green-200" />
+                    {lang === 'it' ? 'Disponibile' : 'Available'}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 bg-red-100 border border-red-200" />
+                    {lang === 'it' ? 'Non disponibile' : 'Unavailable'}
+                  </span>
+                </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {t('detail.minNights')}: {property.min_nights} {t('detail.nights')}
                 </p>
