@@ -1528,14 +1528,17 @@ async def root():
     return {"message": "TerracitoAppartments API", "version": "1.0.0"}
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+import hashlib
 
 # ============ AI CHAT (Guest Assistance — Claude Haiku 4.5) ============
 
 WHATSAPP_NUMBER = os.environ.get('WHATSAPP_NUMBER', '+393445361830')
 
-# In-memory cache: session_id -> LlmChat instance.
+# In-memory cache: session_id -> {"chat": LlmChat, "prompt_hash": str}.
 # Cleared on backend restart; conversation transcript persists in MongoDB regardless.
-_chat_sessions: Dict[str, LlmChat] = {}
+# We re-build the LlmChat whenever the system prompt changes (e.g. admin updates
+# the Welcome Manual) so the model sees fresh data instead of the stale prompt.
+_chat_sessions: Dict[str, Dict[str, Any]] = {}
 
 class ChatRequest(BaseModel):
     message: str
@@ -1703,20 +1706,21 @@ async def chat_message(req: ChatRequest):
     property_doc = await _resolve_property(req.property_id)
     unlock_sensitive = await _verify_booking_code(req.booking_code or "", property_doc.get("id") if property_doc else None)
     system_prompt = await _build_system_prompt(property_doc, req.language, unlock_sensitive)
+    # Hash of the prompt — if it changes (e.g. admin edited the Welcome Manual,
+    # guest navigated to another property, booking code unlocked sensitive info),
+    # the cached LlmChat is rebuilt so the model actually sees the fresh data.
+    prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
 
-    chat = _chat_sessions.get(req.session_id)
-    if chat is None:
+    cached = _chat_sessions.get(req.session_id)
+    if cached is None or cached.get("prompt_hash") != prompt_hash:
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
             session_id=req.session_id,
             system_message=system_prompt
         ).with_model("anthropic", "claude-haiku-4-5-20251001")
-        _chat_sessions[req.session_id] = chat
+        _chat_sessions[req.session_id] = {"chat": chat, "prompt_hash": prompt_hash}
     else:
-        try:
-            chat.system_message = system_prompt
-        except Exception:
-            pass
+        chat = cached["chat"]
 
     await db.chat_conversations.update_one(
         {"session_id": req.session_id},
