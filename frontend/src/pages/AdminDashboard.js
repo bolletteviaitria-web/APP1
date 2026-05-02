@@ -1087,7 +1087,7 @@ export const AdminDashboard = () => {
                         </div>
                       </div>
                       {(activeConversation.messages || []).map((m, idx) => (
-                        <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div key={m.ts ? `${m.ts}-${m.role}` : `msg-${idx}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[80%] px-3 py-2 text-sm whitespace-pre-wrap ${
                             m.role === 'user'
                               ? 'bg-primary text-primary-foreground'

@@ -48,8 +48,8 @@ def sample_property():
 @pytest.fixture(scope="session")
 def test_booking(sample_property):
     """Create a direct booking (no auth required) for document upload tests."""
-    import random
-    offset = random.randint(90, 365)
+    import secrets
+    offset = 90 + secrets.randbelow(276)  # 90..365, cryptographically-safe random
     check_in = (date.today() + timedelta(days=offset)).isoformat()
     check_out = (date.today() + timedelta(days=offset + 3)).isoformat()
     payload = {
