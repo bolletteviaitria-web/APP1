@@ -90,11 +90,17 @@ export const ChatWidget = () => {
     }
   }, [open, messages.length, sending]);
 
-  // Focus input when opening
+  // Focus input when opening + lock body scroll on mobile so the chat doesn't
+  // bounce under the background page when the keyboard opens / closes.
   useEffect(() => {
     if (open) {
       const t = setTimeout(() => inputRef.current?.focus(), 220);
-      return () => clearTimeout(t);
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        clearTimeout(t);
+        document.body.style.overflow = prevOverflow;
+      };
     }
   }, [open]);
 
@@ -206,11 +212,15 @@ export const ChatWidget = () => {
         <span className="text-sm font-semibold tracking-wide">{t('Assistenza', 'Help')}</span>
       </button>
 
-      {/* Chat panel — full screen on mobile, floating on desktop */}
+      {/* Chat panel — fills the visible viewport on mobile, floats on desktop.
+          - `100dvh` adapts to iOS Safari address bar visibility (100vh would clip).
+          - `pb-[env(safe-area-inset-bottom)]` handles iPhone home indicator.
+          - `inset-x-0 top-0` + explicit height avoid the `inset-0` → height:100% trap. */}
       <div
         role="dialog"
         aria-hidden={!open}
-        className={`fixed z-50 inset-0 sm:inset-auto sm:bottom-24 sm:right-5 sm:w-[400px] sm:h-[640px] sm:max-h-[80vh] flex flex-col bg-card border border-border shadow-2xl transition-all duration-300 ${open ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className={`fixed z-50 inset-x-0 top-0 h-[100dvh] max-h-[100dvh] sm:inset-auto sm:top-auto sm:bottom-24 sm:right-5 sm:w-[400px] sm:h-[640px] sm:max-h-[80vh] flex flex-col bg-card border border-border shadow-2xl transition-all duration-300 ${open ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'}`}
         data-testid="chat-panel"
       >
         {/* Header */}

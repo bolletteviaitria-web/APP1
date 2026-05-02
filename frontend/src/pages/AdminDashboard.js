@@ -82,14 +82,61 @@ export const AdminDashboard = () => {
   // Chat conversations
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
+  const [leads, setLeads] = useState([]);
 
   const openConversation = async (sessionId) => {
     try {
       const res = await axios.get(`${API}/admin/chat/conversations/${sessionId}`);
       setActiveConversation(res.data);
+      setActiveTab('chat');
     } catch (e) {
       toast.error(t('common.error'));
     }
+  };
+
+  const updateLeadStatus = async (sessionId, status) => {
+    try {
+      await axios.patch(`${API}/admin/chat/leads/${sessionId}`, { status });
+      setLeads((prev) => prev.map((l) => (l.session_id === sessionId ? { ...l, status } : l)));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const deleteLead = async (sessionId) => {
+    if (!window.confirm(lang === 'it' ? 'Eliminare questo lead?' : 'Delete this lead?')) return;
+    try {
+      await axios.delete(`${API}/admin/chat/leads/${sessionId}`);
+      setLeads((prev) => prev.filter((l) => l.session_id !== sessionId));
+      toast.success(lang === 'it' ? 'Lead eliminato' : 'Lead deleted');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const exportLeadsCsv = () => {
+    if (leads.length === 0) {
+      toast.error(lang === 'it' ? 'Nessun lead da esportare' : 'No leads to export');
+      return;
+    }
+    const cols = ['guest_name', 'phone', 'email', 'origin_city', 'reason', 'dates', 'guests_count',
+                  'property_title', 'property_slug', 'status', 'language', 'created_at', 'last_update', 'session_id'];
+    const escape = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v).replace(/"/g, '""');
+      return /[",\n;]/.test(s) ? `"${s}"` : s;
+    };
+    const rows = [cols.join(',')];
+    for (const l of leads) rows.push(cols.map((c) => escape(l[c])).join(','));
+    const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `terracito-leads-${ts}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(lang === 'it' ? `Esportati ${leads.length} lead` : `Exported ${leads.length} leads`);
   };
 
   const openNewProperty = () => { setEditingProperty(null); setPropertyFormOpen(true); };
@@ -135,6 +182,9 @@ export const AdminDashboard = () => {
       } else if (activeTab === 'chat') {
         const res = await axios.get(`${API}/admin/chat/conversations?limit=100`);
         setConversations(res.data);
+      } else if (activeTab === 'leads') {
+        const res = await axios.get(`${API}/admin/chat/leads?limit=500`);
+        setLeads(res.data);
       }
     } catch (error) {
       console.error('Fetch error:', error);
@@ -250,6 +300,7 @@ export const AdminDashboard = () => {
     { id: 'contacts', label: t('admin.contacts'), icon: MessageSquare },
     { id: 'sync', label: lang === 'it' ? 'Sync iCal' : 'iCal Sync', icon: Link2 },
     { id: 'chat', label: lang === 'it' ? 'Chat AI' : 'AI Chat', icon: Bot },
+    { id: 'leads', label: lang === 'it' ? 'Lead Chat' : 'Chat Leads', icon: Users },
   ];
 
   return (
@@ -973,6 +1024,124 @@ export const AdminDashboard = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Chat Leads Tab */}
+          {activeTab === 'leads' && (
+            <div className="space-y-6" data-testid="leads-tab-content">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h1 className="text-3xl font-display font-medium">
+                    {lang === 'it' ? 'Lead dalla Chat' : 'Chat Leads'}
+                  </h1>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {lang === 'it'
+                      ? 'Contatti raccolti automaticamente dall\u2019assistente virtuale. Usali per follow-up o campagne promozionali.'
+                      : 'Contacts automatically collected by the virtual assistant. Use them for follow-ups or promotions.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={exportLeadsCsv} data-testid="export-leads-csv">
+                    <Download className="w-4 h-4 mr-2" />
+                    {lang === 'it' ? 'Esporta CSV' : 'Export CSV'}
+                  </Button>
+                  <Button onClick={fetchData} variant="ghost" size="icon">
+                    <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="surface-card overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{lang === 'it' ? 'Nome' : 'Name'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Telefono' : 'Phone'}</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>{lang === 'it' ? 'Città' : 'City'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Motivo' : 'Reason'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Date' : 'Dates'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Casa' : 'House'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Stato' : 'Status'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Ultimo contatto' : 'Last update'}</TableHead>
+                      <TableHead className="text-right">{lang === 'it' ? 'Azioni' : 'Actions'}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {leads.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-10">
+                          {lang === 'it'
+                            ? 'Nessun lead raccolto ancora. Quando un ospite parla con l\u2019AI e lascia un dato, apparirà qui.'
+                            : 'No leads collected yet. When a guest chats with the AI and shares a detail, it\u2019ll show up here.'}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {leads.map((l) => (
+                      <TableRow key={l.session_id} data-testid={`lead-row-${l.session_id}`}>
+                        <TableCell className="font-medium">{l.guest_name || '—'}</TableCell>
+                        <TableCell>
+                          {l.phone
+                            ? <a href={`tel:${l.phone}`} className="text-primary hover:underline">{l.phone}</a>
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {l.email
+                            ? <a href={`mailto:${l.email}`} className="text-primary hover:underline">{l.email}</a>
+                            : '—'}
+                        </TableCell>
+                        <TableCell>{l.origin_city || '—'}</TableCell>
+                        <TableCell className="text-xs">{l.reason || '—'}</TableCell>
+                        <TableCell className="text-xs">{l.dates || '—'}</TableCell>
+                        <TableCell>
+                          {l.property_slug
+                            ? <Badge variant="secondary" className="text-[10px]">{l.property_title || l.property_slug}</Badge>
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <select
+                            value={l.status || 'new'}
+                            onChange={(e) => updateLeadStatus(l.session_id, e.target.value)}
+                            className="bg-card border border-border/60 px-2 py-1 text-xs"
+                            data-testid={`lead-status-${l.session_id}`}
+                          >
+                            <option value="new">{lang === 'it' ? 'Nuovo' : 'New'}</option>
+                            <option value="contacted">{lang === 'it' ? 'Contattato' : 'Contacted'}</option>
+                            <option value="converted">{lang === 'it' ? 'Convertito' : 'Converted'}</option>
+                            <option value="lost">{lang === 'it' ? 'Perso' : 'Lost'}</option>
+                          </select>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {l.last_update ? format(new Date(l.last_update), 'dd/MM HH:mm') : '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openConversation(l.session_id)}
+                              title={lang === 'it' ? 'Vedi conversazione' : 'View chat'}
+                              data-testid={`lead-view-chat-${l.session_id}`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteLead(l.session_id)}
+                              title={lang === 'it' ? 'Elimina' : 'Delete'}
+                              data-testid={`lead-delete-${l.session_id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           )}
