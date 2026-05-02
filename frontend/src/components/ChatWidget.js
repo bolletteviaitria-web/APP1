@@ -66,6 +66,10 @@ export const ChatWidget = () => {
     return m ? m[1] : null;
   }, [location.pathname]);
 
+  // The chat is property-scoped: only render on a property detail page.
+  // Visitors on the homepage / catalog / booking / admin won't see the widget.
+  const isOnPropertyPage = Boolean(propertySlug);
+
   // Persist conversation locally
   useEffect(() => {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-50))); } catch (_) {}
@@ -166,6 +170,9 @@ export const ChatWidget = () => {
 
   const cleanWhatsappNumber = (n) => (n || '').replace(/[^\d+]/g, '').replace(/^\+/, '');
   const fallbackWa = '393445361830';
+
+  // Hide the widget entirely outside a property detail page.
+  if (!isOnPropertyPage) return null;
 
   return (
     <>
