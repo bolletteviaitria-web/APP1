@@ -1635,7 +1635,12 @@ async def _format_all_properties_summary() -> str:
     return "\n".join(lines)
 
 
-async def _build_system_prompt(property_doc: Optional[dict], language_hint: Optional[str], unlock_sensitive: bool) -> str:
+async def _build_system_prompt(
+    property_doc: Optional[dict],
+    language_hint: Optional[str],
+    unlock_sensitive: bool,
+    existing_lead: Optional[dict] = None
+) -> str:
     base = (
         "You are the friendly virtual concierge for **TerracitoAppartments**, "
         "a small collection of well-kept, spotless vacation homes in Italy. "
@@ -1714,11 +1719,42 @@ async def _build_system_prompt(property_doc: Optional[dict], language_hint: Opti
             + await _format_all_properties_summary()
         )
 
+    # Known info already collected on this guest — CRITICAL so the AI stops
+    # re-asking details that are already in our records.
+    known_lines = []
+    if existing_lead:
+        label_map = [
+            ("guest_name", "Name"),
+            ("phone", "Phone"),
+            ("email", "Email"),
+            ("origin_city", "Origin city"),
+            ("reason", "Reason / occasion"),
+            ("dates", "Dates"),
+            ("guests_count", "Guests"),
+        ]
+        for key, label in label_map:
+            val = existing_lead.get(key)
+            if val not in (None, "", 0):
+                known_lines.append(f"- {label}: {val}")
+    if known_lines:
+        known_block = (
+            "## KNOWN_INFO — already collected on this guest. DO NOT ask again. "
+            "Address the guest by name if present. Only ask for the FIRST missing field from the list "
+            "[name, phone, email, reason, origin_city], one per reply, never multiple at once.\n"
+            + "\n".join(known_lines)
+        )
+    else:
+        known_block = (
+            "## KNOWN_INFO — no data collected yet on this guest. "
+            "Start progressive collection: next info to ask is the name (first+last)."
+        )
+
     return (
         base
         + "\n\n" + flow
         + "\n\n## RULES\n- " + "\n- ".join(rules)
         + "\n\n" + lead_protocol
+        + "\n\n" + known_block
         + "\n\n## DATA\n" + knowledge
     )
 
@@ -1832,7 +1868,10 @@ async def chat_message(req: ChatRequest):
 
     property_doc = await _resolve_property(req.property_id)
     unlock_sensitive = await _verify_booking_code(req.booking_code or "", property_doc.get("id") if property_doc else None)
-    system_prompt = await _build_system_prompt(property_doc, req.language, unlock_sensitive)
+    # Load any previously-captured lead on this session so the AI knows what
+    # info has already been collected and doesn't re-ask.
+    existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
+    system_prompt = await _build_system_prompt(property_doc, req.language, unlock_sensitive, existing_lead)
     # Hash of the prompt — if it changes (e.g. admin edited the Welcome Manual,
     # guest navigated to another property, booking code unlocked sensitive info),
     # the cached LlmChat is rebuilt so the model actually sees the fresh data.
@@ -1956,6 +1995,13 @@ async def list_chat_leads(
 class ChatLeadUpdate(BaseModel):
     status: Optional[str] = None   # "new" | "contacted" | "converted" | "lost"
     note: Optional[str] = None
+    guest_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    origin_city: Optional[str] = None
+    reason: Optional[str] = None
+    dates: Optional[str] = None
+    guests_count: Optional[int] = None
 
 
 @api_router.patch("/admin/chat/leads/{session_id}")
@@ -1965,10 +2011,9 @@ async def update_chat_lead(
     user: dict = Depends(require_admin)
 ):
     update: Dict[str, Any] = {"last_update": datetime.now(timezone.utc).isoformat()}
-    if body.status:
-        update["status"] = body.status
-    if body.note is not None:
-        update["note"] = body.note
+    # Accept any field the admin sends; empty string clears the value.
+    for field, value in body.model_dump(exclude_unset=True).items():
+        update[field] = value
     res = await db.chat_leads.update_one({"session_id": session_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Lead not found")

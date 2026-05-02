@@ -1,13 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 import {
   LayoutDashboard, Building, Calendar, MessageSquare, Settings,
   Users, Euro, Clock, ArrowUpRight, Check, X, Edit, Trash2, Plus,
-  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home, Bot
+  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home, Bot, Search
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -83,6 +84,31 @@ export const AdminDashboard = () => {
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [leads, setLeads] = useState([]);
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadStatusFilter, setLeadStatusFilter] = useState('all');
+  const [leadPropertyFilter, setLeadPropertyFilter] = useState('all');
+  const [editingLead, setEditingLead] = useState(null);
+
+  const filteredLeads = useMemo(() => {
+    const q = leadSearch.trim().toLowerCase();
+    return leads.filter((l) => {
+      if (leadStatusFilter !== 'all' && (l.status || 'new') !== leadStatusFilter) return false;
+      if (leadPropertyFilter !== 'all' && (l.property_slug || '') !== leadPropertyFilter) return false;
+      if (!q) return true;
+      return [l.guest_name, l.phone, l.email, l.origin_city, l.reason, l.dates, l.property_title, l.note]
+        .some((v) => v && String(v).toLowerCase().includes(q));
+    });
+  }, [leads, leadSearch, leadStatusFilter, leadPropertyFilter]);
+
+  const leadPropertyOptions = useMemo(() => {
+    const seen = new Map();
+    leads.forEach((l) => {
+      if (l.property_slug && !seen.has(l.property_slug)) {
+        seen.set(l.property_slug, l.property_title || l.property_slug);
+      }
+    });
+    return Array.from(seen.entries()); // [[slug, title], ...]
+  }, [leads]);
 
   const openConversation = async (sessionId) => {
     try {
@@ -127,7 +153,7 @@ export const AdminDashboard = () => {
       return /[",\n;]/.test(s) ? `"${s}"` : s;
     };
     const rows = [cols.join(',')];
-    for (const l of leads) rows.push(cols.map((c) => escape(l[c])).join(','));
+    for (const l of filteredLeads) rows.push(cols.map((c) => escape(l[c])).join(','));
     const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -136,7 +162,60 @@ export const AdminDashboard = () => {
     a.download = `terracito-leads-${ts}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(lang === 'it' ? `Esportati ${leads.length} lead` : `Exported ${leads.length} leads`);
+    toast.success(lang === 'it' ? `Esportati ${filteredLeads.length} lead` : `Exported ${filteredLeads.length} leads`);
+  };
+
+  const exportLeadsXlsx = () => {
+    if (filteredLeads.length === 0) {
+      toast.error(lang === 'it' ? 'Nessun lead da esportare' : 'No leads to export');
+      return;
+    }
+    const data = filteredLeads.map((l) => ({
+      Nome: l.guest_name || '',
+      Telefono: l.phone || '',
+      Email: l.email || '',
+      Città: l.origin_city || '',
+      Motivo: l.reason || '',
+      Date: l.dates || '',
+      Ospiti: l.guests_count || '',
+      Casa: l.property_title || l.property_slug || '',
+      Stato: l.status || '',
+      Lingua: l.language || '',
+      Note: l.note || '',
+      'Creato il': l.created_at ? format(new Date(l.created_at), 'dd/MM/yyyy HH:mm') : '',
+      'Ultimo aggiornamento': l.last_update ? format(new Date(l.last_update), 'dd/MM/yyyy HH:mm') : '',
+      'Session ID': l.session_id || ''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = Object.keys(data[0]).map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Leads');
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+    XLSX.writeFile(wb, `terracito-leads-${ts}.xlsx`);
+    toast.success(lang === 'it' ? `Esportati ${filteredLeads.length} lead (xlsx)` : `Exported ${filteredLeads.length} leads (xlsx)`);
+  };
+
+  const saveLeadEdit = async () => {
+    if (!editingLead) return;
+    try {
+      const payload = {
+        guest_name: editingLead.guest_name || '',
+        phone: editingLead.phone || '',
+        email: editingLead.email || '',
+        origin_city: editingLead.origin_city || '',
+        reason: editingLead.reason || '',
+        dates: editingLead.dates || '',
+        guests_count: editingLead.guests_count ? Number(editingLead.guests_count) : null,
+        status: editingLead.status || 'new',
+        note: editingLead.note || ''
+      };
+      await axios.patch(`${API}/admin/chat/leads/${editingLead.session_id}`, payload);
+      setLeads((prev) => prev.map((l) => (l.session_id === editingLead.session_id ? { ...l, ...payload } : l)));
+      setEditingLead(null);
+      toast.success(lang === 'it' ? 'Lead aggiornato' : 'Lead updated');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
   };
 
   const openNewProperty = () => { setEditingProperty(null); setPropertyFormOpen(true); };
@@ -1045,12 +1124,56 @@ export const AdminDashboard = () => {
                 <div className="flex items-center gap-2">
                   <Button variant="outline" onClick={exportLeadsCsv} data-testid="export-leads-csv">
                     <Download className="w-4 h-4 mr-2" />
-                    {lang === 'it' ? 'Esporta CSV' : 'Export CSV'}
+                    CSV
+                  </Button>
+                  <Button variant="outline" onClick={exportLeadsXlsx} data-testid="export-leads-xlsx">
+                    <Download className="w-4 h-4 mr-2" />
+                    Excel
                   </Button>
                   <Button onClick={fetchData} variant="ghost" size="icon">
                     <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                   </Button>
                 </div>
+              </div>
+
+              {/* Search + filters */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={leadSearch}
+                    onChange={(e) => setLeadSearch(e.target.value)}
+                    placeholder={lang === 'it' ? 'Cerca nome, email, telefono, città\u2026' : 'Search name, email, phone, city\u2026'}
+                    className="pl-9"
+                    data-testid="lead-search-input"
+                  />
+                </div>
+                <select
+                  value={leadStatusFilter}
+                  onChange={(e) => setLeadStatusFilter(e.target.value)}
+                  className="bg-card border border-border/60 px-3 py-2 text-sm"
+                  data-testid="lead-status-filter"
+                >
+                  <option value="all">{lang === 'it' ? 'Tutti gli stati' : 'All statuses'}</option>
+                  <option value="new">{lang === 'it' ? 'Nuovo' : 'New'}</option>
+                  <option value="contacted">{lang === 'it' ? 'Contattato' : 'Contacted'}</option>
+                  <option value="converted">{lang === 'it' ? 'Convertito' : 'Converted'}</option>
+                  <option value="lost">{lang === 'it' ? 'Perso' : 'Lost'}</option>
+                </select>
+                <select
+                  value={leadPropertyFilter}
+                  onChange={(e) => setLeadPropertyFilter(e.target.value)}
+                  className="bg-card border border-border/60 px-3 py-2 text-sm"
+                  data-testid="lead-property-filter"
+                >
+                  <option value="all">{lang === 'it' ? 'Tutte le case' : 'All houses'}</option>
+                  {leadPropertyOptions.map(([slug, title]) => (
+                    <option key={slug} value={slug}>{title}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  {filteredLeads.length} / {leads.length}
+                </span>
               </div>
 
               <div className="surface-card overflow-x-auto">
@@ -1070,16 +1193,16 @@ export const AdminDashboard = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {leads.length === 0 && (
+                    {filteredLeads.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-10">
                           {lang === 'it'
-                            ? 'Nessun lead raccolto ancora. Quando un ospite parla con l\u2019AI e lascia un dato, apparirà qui.'
-                            : 'No leads collected yet. When a guest chats with the AI and shares a detail, it\u2019ll show up here.'}
+                            ? 'Nessun lead trovato con i filtri attuali.'
+                            : 'No leads match the current filters.'}
                         </TableCell>
                       </TableRow>
                     )}
-                    {leads.map((l) => (
+                    {filteredLeads.map((l) => (
                       <TableRow key={l.session_id} data-testid={`lead-row-${l.session_id}`}>
                         <TableCell className="font-medium">{l.guest_name || '—'}</TableCell>
                         <TableCell>
@@ -1121,6 +1244,15 @@ export const AdminDashboard = () => {
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => setEditingLead({ ...l })}
+                              title={lang === 'it' ? 'Modifica' : 'Edit'}
+                              data-testid={`lead-edit-${l.session_id}`}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => openConversation(l.session_id)}
                               title={lang === 'it' ? 'Vedi conversazione' : 'View chat'}
                               data-testid={`lead-view-chat-${l.session_id}`}
@@ -1146,6 +1278,128 @@ export const AdminDashboard = () => {
             </div>
           )}
         </main>
+
+        {/* Lead Edit Dialog */}
+        <Dialog open={!!editingLead} onOpenChange={(o) => !o && setEditingLead(null)}>
+          <DialogContent className="bg-card border-border/60 max-w-xl" data-testid="lead-edit-dialog">
+            <DialogHeader>
+              <DialogTitle className="font-display">
+                {lang === 'it' ? 'Modifica Lead' : 'Edit Lead'}
+              </DialogTitle>
+            </DialogHeader>
+            {editingLead && (
+              <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="col-span-2">
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Nome completo' : 'Full name'}
+                  </label>
+                  <Input
+                    value={editingLead.guest_name || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, guest_name: e.target.value })}
+                    data-testid="lead-edit-name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Telefono' : 'Phone'}
+                  </label>
+                  <Input
+                    value={editingLead.phone || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, phone: e.target.value })}
+                    data-testid="lead-edit-phone"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">Email</label>
+                  <Input
+                    type="email"
+                    value={editingLead.email || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, email: e.target.value })}
+                    data-testid="lead-edit-email"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Città di provenienza' : 'Origin city'}
+                  </label>
+                  <Input
+                    value={editingLead.origin_city || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, origin_city: e.target.value })}
+                    data-testid="lead-edit-city"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Motivo' : 'Reason'}
+                  </label>
+                  <Input
+                    value={editingLead.reason || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, reason: e.target.value })}
+                    data-testid="lead-edit-reason"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Date interessate' : 'Dates'}
+                  </label>
+                  <Input
+                    value={editingLead.dates || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, dates: e.target.value })}
+                    data-testid="lead-edit-dates"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Ospiti' : 'Guests'}
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editingLead.guests_count || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, guests_count: e.target.value })}
+                    data-testid="lead-edit-guests"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Stato' : 'Status'}
+                  </label>
+                  <select
+                    value={editingLead.status || 'new'}
+                    onChange={(e) => setEditingLead({ ...editingLead, status: e.target.value })}
+                    className="w-full bg-card border border-border/60 px-3 py-2 text-sm"
+                    data-testid="lead-edit-status"
+                  >
+                    <option value="new">{lang === 'it' ? 'Nuovo' : 'New'}</option>
+                    <option value="contacted">{lang === 'it' ? 'Contattato' : 'Contacted'}</option>
+                    <option value="converted">{lang === 'it' ? 'Convertito' : 'Converted'}</option>
+                    <option value="lost">{lang === 'it' ? 'Perso' : 'Lost'}</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? 'Note interne' : 'Internal note'}
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editingLead.note || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, note: e.target.value })}
+                    className="w-full bg-card border border-border/60 px-3 py-2 text-sm resize-none"
+                    data-testid="lead-edit-note"
+                  />
+                </div>
+                <div className="col-span-2 flex items-center justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setEditingLead(null)} data-testid="lead-edit-cancel">
+                    {lang === 'it' ? 'Annulla' : 'Cancel'}
+                  </Button>
+                  <Button onClick={saveLeadEdit} data-testid="lead-edit-save">
+                    {lang === 'it' ? 'Salva' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Booking Documents Dialog */}
         <Dialog open={!!docsBookingId} onOpenChange={(open) => !open && setDocsBookingId(null)}>
