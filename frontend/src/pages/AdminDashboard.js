@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import {
   LayoutDashboard, Building, Calendar, MessageSquare, Settings,
   Users, Euro, Clock, ArrowUpRight, Check, X, Edit, Trash2, Plus,
-  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home
+  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home, Bot
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -58,6 +58,18 @@ export const AdminDashboard = () => {
   // Property form dialog
   const [propertyFormOpen, setPropertyFormOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
+  // Chat conversations
+  const [conversations, setConversations] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
+
+  const openConversation = async (sessionId) => {
+    try {
+      const res = await axios.get(`${API}/admin/chat/conversations/${sessionId}`);
+      setActiveConversation(res.data);
+    } catch (e) {
+      toast.error(t('common.error'));
+    }
+  };
 
   const openNewProperty = () => { setEditingProperty(null); setPropertyFormOpen(true); };
   const openEditProperty = (p) => { setEditingProperty(p); setPropertyFormOpen(true); };
@@ -99,6 +111,9 @@ export const AdminDashboard = () => {
         ]);
         setSyncs(syncRes.data);
         setProperties(propRes.data);
+      } else if (activeTab === 'chat') {
+        const res = await axios.get(`${API}/admin/chat/conversations?limit=100`);
+        setConversations(res.data);
       }
     } catch (error) {
       console.error('Fetch error:', error);
@@ -213,6 +228,7 @@ export const AdminDashboard = () => {
     { id: 'bookings', label: t('admin.bookings'), icon: Calendar },
     { id: 'contacts', label: t('admin.contacts'), icon: MessageSquare },
     { id: 'sync', label: lang === 'it' ? 'Sync iCal' : 'iCal Sync', icon: Link2 },
+    { id: 'chat', label: lang === 'it' ? 'Chat AI' : 'AI Chat', icon: Bot },
   ];
 
   return (
@@ -811,6 +827,122 @@ export const AdminDashboard = () => {
                     {lang === 'it' ? 'Nessun feed iCal configurato' : 'No iCal feeds configured'}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Chat AI Tab */}
+          {activeTab === 'chat' && (
+            <div className="space-y-6" data-testid="chat-tab-content">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-display font-medium">
+                    {lang === 'it' ? 'Conversazioni Chat AI' : 'AI Chat Conversations'}
+                  </h1>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {lang === 'it'
+                      ? 'Tutte le conversazioni che gli ospiti hanno avuto con l\u2019assistente virtuale del sito.'
+                      : 'All conversations guests have had with the website\u2019s virtual assistant.'}
+                  </p>
+                </div>
+                <Button onClick={fetchData} variant="ghost" size="icon">
+                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* List */}
+                <div className="lg:col-span-1 surface-card overflow-hidden">
+                  <div className="p-3 border-b border-border/40 text-xs uppercase tracking-wider text-muted-foreground">
+                    {lang === 'it' ? `Sessioni (${conversations.length})` : `Sessions (${conversations.length})`}
+                  </div>
+                  <ul className="divide-y divide-border/40 max-h-[70vh] overflow-y-auto">
+                    {conversations.map((c) => {
+                      const last = (c.messages && c.messages[0]) || {};
+                      const isActive = activeConversation?.session_id === c.session_id;
+                      return (
+                        <li key={c.session_id}>
+                          <button
+                            onClick={() => openConversation(c.session_id)}
+                            className={`w-full text-left p-3 hover:bg-muted/60 transition-colors ${isActive ? 'bg-muted' : ''}`}
+                            data-testid={`chat-session-${c.session_id}`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-xs font-mono text-muted-foreground truncate">
+                                {c.session_id.slice(0, 8)}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {c.last_active_at ? format(new Date(c.last_active_at), 'dd/MM HH:mm') : ''}
+                              </span>
+                            </div>
+                            <p className="text-xs text-foreground line-clamp-2 mb-1">
+                              {last.content || (lang === 'it' ? '(vuota)' : '(empty)')}
+                            </p>
+                            <div className="flex items-center gap-2 text-[10px]">
+                              <Badge variant="outline" className="text-[10px]">
+                                {c.message_count} {lang === 'it' ? 'msg' : 'msg'}
+                              </Badge>
+                              {c.last_property_slug && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {c.last_property_slug}
+                                </Badge>
+                              )}
+                              {c.sensitive_unlocked && (
+                                <Badge className="text-[10px] bg-green-500/10 text-green-700 border-green-500/30">
+                                  {lang === 'it' ? 'verificato' : 'verified'}
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {conversations.length === 0 && (
+                    <div className="p-8 text-center text-sm text-muted-foreground">
+                      {lang === 'it' ? 'Nessuna conversazione ancora' : 'No conversations yet'}
+                    </div>
+                  )}
+                </div>
+
+                {/* Transcript */}
+                <div className="lg:col-span-2 surface-card p-5 max-h-[70vh] overflow-y-auto">
+                  {!activeConversation ? (
+                    <div className="h-full flex items-center justify-center text-sm text-muted-foreground py-16">
+                      <div className="text-center">
+                        <Bot className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                        {lang === 'it' ? 'Seleziona una conversazione per leggerla' : 'Select a conversation to read it'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 pb-3 border-b border-border/40">
+                        <div>
+                          <p className="text-xs font-mono text-muted-foreground">{activeConversation.session_id}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {activeConversation.started_at && format(new Date(activeConversation.started_at), 'dd/MM/yyyy HH:mm')}
+                            {activeConversation.last_property_slug && ` · ${activeConversation.last_property_slug}`}
+                            {activeConversation.last_language && ` · ${activeConversation.last_language.toUpperCase()}`}
+                          </p>
+                        </div>
+                      </div>
+                      {(activeConversation.messages || []).map((m, idx) => (
+                        <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] px-3 py-2 text-sm whitespace-pre-wrap ${
+                            m.role === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-foreground'
+                          }`}>
+                            <p>{m.content}</p>
+                            <p className={`text-[10px] mt-1 ${m.role === 'user' ? 'opacity-80' : 'text-muted-foreground'}`}>
+                              {m.ts && format(new Date(m.ts), 'HH:mm')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

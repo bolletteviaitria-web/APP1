@@ -12,6 +12,7 @@ import { ContactPage } from "./pages/ContactPage";
 import { PrivacyPage, TermsPage } from "./pages/LegalPages";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { Toaster } from "./components/ui/sonner";
+import { ChatWidget } from "./components/ChatWidget";
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             </Routes>
           </main>
           <Footer />
+          <ChatWidget />
           <Toaster position="top-right" richColors />
         </div>
       </BrowserRouter>

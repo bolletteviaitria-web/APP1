@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, Trash2, Upload, Loader2, X, Image as ImageIcon, GripVertical, MapPin, Search
+  Plus, Trash2, Upload, Loader2, Image as ImageIcon, GripVertical, Search
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from './ui/dialog';
 import { toast } from 'sonner';
 
@@ -47,7 +47,19 @@ const emptyProperty = () => ({
   seasons: [],
   extras: [],
   min_nights: 1,
-  is_active: true
+  is_active: true,
+  welcome_manual: {
+    check_in_time: '',
+    check_out_time: '',
+    wifi_name: '',
+    wifi_password: '',
+    parking_info: '',
+    house_rules: '',
+    transport_info: '',
+    emergency_contacts: '',
+    local_tips: '',
+    extra_faq: ''
+  }
 });
 
 const resolveImageUrl = (src) => {
@@ -81,7 +93,8 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
         amenities: property.amenities || [],
         images: property.images || [],
         seasons: property.seasons || [],
-        extras: property.extras || []
+        extras: property.extras || [],
+        welcome_manual: { ...(property.welcome_manual || {}) }
       });
     } else {
       setForm(emptyProperty());
@@ -232,6 +245,12 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
     extras: f.extras.map((e, i) => i === idx ? { ...e, [key]: key === 'price' ? Number(val) || 0 : val } : e)
   }));
   const removeExtra = (idx) => setForm((f) => ({ ...f, extras: f.extras.filter((_, i) => i !== idx) }));
+
+  // Welcome Manual (used by AI chat assistant)
+  const setWm = (key, val) => setForm((f) => ({
+    ...f,
+    welcome_manual: { ...(f.welcome_manual || {}), [key]: val }
+  }));
 
   const handleSave = async () => {
     if (!form.slug || !form.translations.it.title || !form.translations.en.title) {
@@ -567,6 +586,64 @@ export const PropertyFormDialog = ({ open, onOpenChange, property, onSaved }) =>
                 </Button>
               </div>
             ))}
+          </section>
+          {/* Welcome Manual — used by AI chat assistant */}
+          <section className="space-y-4">
+            <div>
+              <h3 className="font-display text-lg text-primary">{tt('Manuale di Benvenuto', 'Welcome Manual')}</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                {tt(
+                  'Queste informazioni vengono usate dall\u2019assistente AI per rispondere agli ospiti. WiFi password e indirizzo esatto vengono mostrati solo a chi fornisce un codice prenotazione valido.',
+                  'These details are used by the AI assistant to answer guests. WiFi password and exact address are only revealed to guests who provide a valid booking code.'
+                )}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Orario check-in', 'Check-in time')}</Label>
+                <Input value={form.welcome_manual?.check_in_time || ''} onChange={(e) => setWm('check_in_time', e.target.value)} placeholder="es. 15:00 - 20:00" data-testid="form-wm-checkin" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Orario check-out', 'Check-out time')}</Label>
+                <Input value={form.welcome_manual?.check_out_time || ''} onChange={(e) => setWm('check_out_time', e.target.value)} placeholder="es. entro le 10:00" data-testid="form-wm-checkout" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Wi-Fi: nome rete', 'Wi-Fi network')}</Label>
+                <Input value={form.welcome_manual?.wifi_name || ''} onChange={(e) => setWm('wifi_name', e.target.value)} placeholder="TerracitoCasa1" data-testid="form-wm-wifi-name" />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {tt('Wi-Fi: password 🔒', 'Wi-Fi: password 🔒')}
+                </Label>
+                <Input value={form.welcome_manual?.wifi_password || ''} onChange={(e) => setWm('wifi_password', e.target.value)} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022" data-testid="form-wm-wifi-pass" />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Parcheggio', 'Parking')}</Label>
+              <Textarea rows={2} value={form.welcome_manual?.parking_info || ''} onChange={(e) => setWm('parking_info', e.target.value)} placeholder={tt('Dove parcheggiare e come', 'Where to park and how')} data-testid="form-wm-parking" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Regole della casa', 'House rules')}</Label>
+              <Textarea rows={3} value={form.welcome_manual?.house_rules || ''} onChange={(e) => setWm('house_rules', e.target.value)} placeholder={tt('Fumo, animali, party, orari silenzio\u2026', 'Smoking, pets, parties, quiet hours\u2026')} data-testid="form-wm-rules" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Trasporti locali', 'Local transport')}</Label>
+              <Textarea rows={2} value={form.welcome_manual?.transport_info || ''} onChange={(e) => setWm('transport_info', e.target.value)} placeholder={tt('Come arrivare, mezzi pubblici, taxi consigliati', 'How to reach the property, public transport, recommended taxis')} data-testid="form-wm-transport" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Numeri di emergenza', 'Emergency contacts')}</Label>
+              <Textarea rows={2} value={form.welcome_manual?.emergency_contacts || ''} onChange={(e) => setWm('emergency_contacts', e.target.value)} placeholder={tt('Host, idraulico, medico locale, polizia\u2026', 'Host, plumber, local doctor, police\u2026')} data-testid="form-wm-emergency" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('Tips zona', 'Local tips')}</Label>
+              <Textarea rows={3} value={form.welcome_manual?.local_tips || ''} onChange={(e) => setWm('local_tips', e.target.value)} placeholder={tt('Ristoranti, spiagge, attrazioni\u2026', 'Restaurants, beaches, attractions\u2026')} data-testid="form-wm-tips" />
+            </div>
+            <div>
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{tt('FAQ libere', 'Free-form FAQ')}</Label>
+              <Textarea rows={3} value={form.welcome_manual?.extra_faq || ''} onChange={(e) => setWm('extra_faq', e.target.value)} placeholder={tt('Altre domande frequenti e info utili\u2026', 'Other frequent questions and useful info\u2026')} data-testid="form-wm-faq" />
+            </div>
           </section>
         </div>
 
