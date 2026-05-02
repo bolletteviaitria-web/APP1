@@ -1536,6 +1536,7 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage
 import hashlib
 import re as _re
 import json as _json
+import dateparser  # fuzzy date parsing for IT/EN guest messages
 
 # ============ AI CHAT (Guest Assistance — Claude Haiku 4.5) ============
 
@@ -1635,11 +1636,185 @@ async def _format_all_properties_summary() -> str:
     return "\n".join(lines)
 
 
+async def _format_blocked_dates(property_id: str) -> str:
+    """Compact calendar view (next 6 months) the AI can read to answer availability questions.
+    Merges bookings + iCal-synced events into a single, deduped, sorted list of ranges."""
+    today = datetime.now(timezone.utc).date()
+    horizon = today + timedelta(days=180)
+
+    bookings = await db.bookings.find({
+        "property_id": property_id,
+        "status": {"$in": ["pending", "confirmed"]},
+        "check_out": {"$gte": today.isoformat()}
+    }, {"_id": 0, "check_in": 1, "check_out": 1, "source": 1}).to_list(200)
+
+    ical_events = await db.ical_events.find({
+        "property_id": property_id,
+        "end_date": {"$gte": today.isoformat()}
+    }, {"_id": 0, "start_date": 1, "end_date": 1, "platform": 1}).to_list(500)
+
+    ranges = []
+    for b in bookings:
+        ranges.append((b["check_in"][:10], b["check_out"][:10], b.get("source") or "direct"))
+    for e in ical_events:
+        ranges.append((e["start_date"][:10], e["end_date"][:10], e.get("platform") or "external"))
+
+    # Keep only ranges that touch the 180-day window and sort chronologically
+    keep = []
+    for start, end, src in ranges:
+        try:
+            if end < today.isoformat() or start > horizon.isoformat():
+                continue
+        except Exception:
+            continue
+        keep.append((start, end, src))
+    keep.sort()
+
+    if not keep:
+        return (
+            f"## BOOKING_CALENDAR (today = {today.isoformat()})\n"
+            "The whole window (next 6 months) is currently OPEN — no booked or blocked ranges. "
+            "You can safely tell the guest the dates are available."
+        )
+
+    lines = [f"## BOOKING_CALENDAR (today = {today.isoformat()}) — next 6 months"]
+    lines.append("Ranges listed below are NOT BOOKABLE (checkout date is exclusive, as per iCal standard):")
+    for start, end, src in keep:
+        lines.append(f"- {start} → {end}  (source: {src})")
+    lines.append(
+        "\nHow to use this block: if the guest asks about specific dates, compare against the ranges above. "
+        "Overlap rule: a stay [in, out) overlaps a blocked range [s, e) if in < e AND out > s. "
+        "Reply CLEARLY: if free say 'le date sono libere, posso procedere con la prenotazione'. "
+        "If busy, say 'purtroppo quelle date risultano già prenotate' and propose the closest free window "
+        "reasoning from the ranges above. Never promise something that contradicts this block."
+    )
+    return "\n".join(lines)
+
+
+# Regexes to catch date ranges the guest mentions (Italian & English common forms).
+_DATE_RANGE_PATTERNS = [
+    # "dal 6 al 10 maggio 2026", "dal 6 al 10 maggio", "dal 6/5 al 10/5/2026"
+    _re.compile(
+        r"(?:dal|from)\s+(?P<start>[\w\d\/\.\-\s]+?)\s+(?:al|to|a)\s+(?P<end>[\w\d\/\.\-\s]+?)"
+        r"(?=[\.,;\?\!]|$|\s+per\s|\s+con\s)",
+        flags=_re.IGNORECASE
+    ),
+    # "6-10 maggio 2026", "6 - 10 maggio"
+    _re.compile(
+        r"\b(?P<start>\d{1,2}(?:[\/\.\-]\d{1,2})?(?:[\/\.\-]\d{2,4})?)\s*[\-–—]\s*"
+        r"(?P<end>\d{1,2}(?:[\/\.\-]\d{1,2})?(?:[\/\.\-]\d{2,4})?\s+[a-zA-Zà-ù]+(?:\s+\d{4})?)",
+        flags=_re.IGNORECASE
+    ),
+    # "dal 20 al 22", "dal 2026-05-20 al 2026-05-22"
+    _re.compile(
+        r"(?:dal|from)\s+(?P<start>\d{4}-\d{2}-\d{2})\s+(?:al|to)\s+(?P<end>\d{4}-\d{2}-\d{2})",
+        flags=_re.IGNORECASE
+    ),
+]
+
+
+def _try_parse_date(text: str, lang_hint: str) -> Optional[date]:
+    if not text:
+        return None
+    langs = ["it", "en"] if lang_hint not in ("it", "en") else [lang_hint]
+    try:
+        dt = dateparser.parse(
+            text.strip(),
+            languages=langs,
+            settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": datetime.now(timezone.utc)}
+        )
+        return dt.date() if dt else None
+    except Exception:
+        return None
+
+
+def _extract_date_range(message: str, lang_hint: str) -> Optional[tuple]:
+    """Best-effort extraction of a (check_in, check_out) date range from the guest's message."""
+    if not message:
+        return None
+    for rgx in _DATE_RANGE_PATTERNS:
+        m = rgx.search(message)
+        if not m:
+            continue
+        start_raw = m.group("start").strip()
+        end_raw = m.group("end").strip()
+        # If start is just a day number (no month), borrow the month/year from end side.
+        if _re.fullmatch(r"\d{1,2}", start_raw):
+            tail = _re.search(r"[a-zA-Zà-ù]+(?:\s+\d{4})?$", end_raw)
+            if tail:
+                start_raw = f"{start_raw} {tail.group(0)}"
+        start = _try_parse_date(start_raw, lang_hint)
+        end = _try_parse_date(end_raw, lang_hint)
+        if start and end and start < end:
+            return (start, end)
+        if start and end and start == end:
+            # Single-day intent → assume 1 night (checkout next day)
+            return (start, start + timedelta(days=1))
+    return None
+
+
+async def _check_availability(property_id: str, check_in: date, check_out: date) -> dict:
+    """Deterministic DB overlap check. check_out is exclusive (iCal convention)."""
+    ci = check_in.isoformat()
+    co = check_out.isoformat()
+    # bookings that overlap: existing.check_in < new.check_out AND existing.check_out > new.check_in
+    bk = await db.bookings.find_one({
+        "property_id": property_id,
+        "status": {"$in": ["pending", "confirmed"]},
+        "check_in": {"$lt": co},
+        "check_out": {"$gt": ci}
+    }, {"_id": 0, "check_in": 1, "check_out": 1, "source": 1})
+    ev = await db.ical_events.find_one({
+        "property_id": property_id,
+        "start_date": {"$lt": co},
+        "end_date": {"$gt": ci}
+    }, {"_id": 0, "start_date": 1, "end_date": 1, "platform": 1})
+    conflict = bk or ev
+    return {
+        "check_in": ci,
+        "check_out": co,
+        "nights": (check_out - check_in).days,
+        "free": conflict is None,
+        "conflict": conflict
+    }
+
+
+async def _format_availability_result(property_id: str, message: str, lang_hint: str) -> str:
+    """If the guest's message contains a date range, compute the actual availability
+    and return a SERVER-VERIFIED block the LLM must trust verbatim."""
+    rng = _extract_date_range(message, lang_hint)
+    if not rng:
+        return ""
+    ci, co = rng
+    result = await _check_availability(property_id, ci, co)
+    if result["free"]:
+        return (
+            "## AVAILABILITY_RESULT — SERVER-VERIFIED, TRUST THIS OVER THE CALENDAR BLOCK\n"
+            f"Guest asked: check-in {result['check_in']}, check-out {result['check_out']} "
+            f"({result['nights']} notti). Result: **FREE / LIBERE**. "
+            "Confirm clearly and move to price estimate."
+        )
+    conflict = result["conflict"]
+    conflict_str = (
+        f"{conflict.get('check_in') or conflict.get('start_date')} → "
+        f"{conflict.get('check_out') or conflict.get('end_date')}"
+    )
+    return (
+        "## AVAILABILITY_RESULT — SERVER-VERIFIED, TRUST THIS OVER THE CALENDAR BLOCK\n"
+        f"Guest asked: check-in {result['check_in']}, check-out {result['check_out']} "
+        f"({result['nights']} notti). Result: **BUSY / OCCUPATE**. "
+        f"Blocking range: {conflict_str}. "
+        "Reply honestly that those dates are already booked, then propose the nearest free window "
+        "by reading the BOOKING_CALENDAR ranges above."
+    )
+
+
 async def _build_system_prompt(
     property_doc: Optional[dict],
     language_hint: Optional[str],
     unlock_sensitive: bool,
-    existing_lead: Optional[dict] = None
+    existing_lead: Optional[dict] = None,
+    user_message: Optional[str] = None
 ) -> str:
     base = (
         "You are the friendly virtual concierge for **TerracitoAppartments**, "
@@ -1653,10 +1828,11 @@ async def _build_system_prompt(
         "1. **Warm greeting** — confirm you are the assistant for THIS specific house and offer to help.\n"
         "2. **Ask arrival & departure dates** (if not already given). Example: "
         "\"Quando vorresti arrivare e ripartire? Così verifico subito la disponibilità.\"\n"
-        "3. **Check availability** — dates the user mentions are considered 'to verify'. "
-        "You cannot actually read the booking calendar, so say something like: "
-        "\"Ottimo, verifico la disponibilità per quelle date e ti ricontatto via WhatsApp se non fosse libera\"; "
-        "never promise a date is 100% free.\n"
+        "3. **Check availability** — you DO have access to the booking calendar: see the BOOKING_CALENDAR block below for all booked/blocked ranges on this house in the next 6 months. "
+        "Compare the dates the guest requested against that block. If they DO NOT overlap any range, confirm clearly: "
+        "\"le date sono libere, possiamo procedere\". If they overlap, say honestly \"purtroppo quelle date sono già prenotate\" "
+        "and propose the closest free window by reasoning from the ranges. "
+        "Only if BOOKING_CALENDAR is absent (no specific property), say you will re-check and follow up.\n"
         "4. **Give a clear total estimate** using the PROPERTY DATA block: "
         "total = (base_price × nights) − weekly/monthly discount if applicable + cleaning_fee. "
         "Also mention the security_deposit separately (refundable, pre-auth only), and the extra_guest_fee "
@@ -1706,9 +1882,17 @@ async def _build_system_prompt(
     )
 
     if property_doc:
+        calendar_block = await _format_blocked_dates(property_doc["id"])
+        availability_block = ""
+        if user_message:
+            availability_block = await _format_availability_result(
+                property_doc["id"], user_message, language_hint or "it"
+            )
         knowledge = (
             "## CURRENT PROPERTY (the guest is right now on this house's page — answer specific questions using THIS data first)\n\n"
             + _format_welcome_manual(property_doc, unlock_sensitive)
+            + "\n\n" + calendar_block
+            + (("\n\n" + availability_block) if availability_block else "")
             + "\n\n## OTHER HOUSES IN THE CATALOG (mention only if the guest asks for alternatives)\n\n"
             + await _format_all_properties_summary()
         )
@@ -1871,7 +2055,9 @@ async def chat_message(req: ChatRequest):
     # Load any previously-captured lead on this session so the AI knows what
     # info has already been collected and doesn't re-ask.
     existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
-    system_prompt = await _build_system_prompt(property_doc, req.language, unlock_sensitive, existing_lead)
+    system_prompt = await _build_system_prompt(
+        property_doc, req.language, unlock_sensitive, existing_lead, req.message
+    )
     # Hash of the prompt — if it changes (e.g. admin edited the Welcome Manual,
     # guest navigated to another property, booking code unlocked sensitive info),
     # the cached LlmChat is rebuilt so the model actually sees the fresh data.
