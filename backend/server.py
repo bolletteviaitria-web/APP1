@@ -1747,6 +1747,46 @@ async def get_chat_conversation(session_id: str, user: dict = Depends(require_ad
     return conv
 
 
+@api_router.get("/admin/backup")
+async def admin_backup(user: dict = Depends(require_admin)):
+    """Full JSON dump of business data — admin can download before deploy as a precaution."""
+    properties = await db.properties.find({}, {"_id": 0}).to_list(1000)
+    bookings = await db.bookings.find({}, {"_id": 0}).to_list(5000)
+    contacts = await db.contacts.find({}, {"_id": 0}).to_list(5000)
+    reviews = await db.reviews.find({}, {"_id": 0}).to_list(5000)
+    ical_syncs = await db.ical_syncs.find({}, {"_id": 0}).to_list(500)
+    ical_events = await db.ical_events.find({}, {"_id": 0}).to_list(5000)
+    booking_documents = await db.booking_documents.find({}, {"_id": 0}).to_list(5000)
+    property_images = await db.property_images.find({}, {"_id": 0}).to_list(5000)
+    chat_conversations = await db.chat_conversations.find({}, {"_id": 0}).to_list(5000)
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0",
+        "counts": {
+            "properties": len(properties),
+            "bookings": len(bookings),
+            "contacts": len(contacts),
+            "reviews": len(reviews),
+            "ical_syncs": len(ical_syncs),
+            "ical_events": len(ical_events),
+            "booking_documents": len(booking_documents),
+            "property_images": len(property_images),
+            "chat_conversations": len(chat_conversations),
+        },
+        "data": {
+            "properties": properties,
+            "bookings": bookings,
+            "contacts": contacts,
+            "reviews": reviews,
+            "ical_syncs": ical_syncs,
+            "ical_events": ical_events,
+            "booking_documents": booking_documents,
+            "property_images": property_images,
+            "chat_conversations": chat_conversations,
+        }
+    }
+
+
 # Include router (must be after all @api_router decorators)
 app.include_router(api_router)
 

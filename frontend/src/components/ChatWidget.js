@@ -144,21 +144,59 @@ export const ChatWidget = () => {
     window.location.reload(); // simplest way to refresh sessionId
   };
 
+  // Onboarding tooltip — shows once per session ~3s after mount, until user clicks the launcher
+  const [showTip, setShowTip] = useState(false);
+  useEffect(() => {
+    let dismissed = false;
+    try { dismissed = sessionStorage.getItem('terracito.chat_tip_dismissed') === '1'; } catch (_) {}
+    if (dismissed || open || messages.length > 0) return;
+    const t1 = setTimeout(() => setShowTip(true), 2500);
+    const t2 = setTimeout(() => {
+      setShowTip(false);
+      try { sessionStorage.setItem('terracito.chat_tip_dismissed', '1'); } catch (_) {}
+    }, 12000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [open, messages.length]);
+
+  const handleLauncherClick = () => {
+    setShowTip(false);
+    try { sessionStorage.setItem('terracito.chat_tip_dismissed', '1'); } catch (_) {}
+    setOpen((o) => !o);
+  };
+
   const cleanWhatsappNumber = (n) => (n || '').replace(/[^\d+]/g, '').replace(/^\+/, '');
   const fallbackWa = '393445361830';
 
   return (
     <>
-      {/* Floating launcher */}
+      {/* Onboarding tooltip — points to the launcher */}
+      <div
+        className={`fixed z-[51] bottom-36 sm:bottom-40 right-5 sm:right-6 max-w-[260px] transition-all duration-500 ${showTip && !open ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}
+        data-testid="chat-tooltip"
+      >
+        <div className="relative bg-foreground text-background px-4 py-3 shadow-xl">
+          <p className="text-sm leading-snug">
+            {t('Ciao 👋 Hai una domanda? Sono qui per te 24/7.', 'Hi 👋 Got a question? I\u2019m here for you 24/7.')}
+          </p>
+          <span className="absolute -bottom-1.5 right-8 w-3 h-3 bg-foreground rotate-45" />
+        </div>
+      </div>
+
+      {/* Floating launcher — large, animated, attention-grabbing */}
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`fixed z-50 bottom-20 right-5 sm:bottom-24 sm:right-6 inline-flex items-center gap-2 px-5 py-3 bg-primary text-primary-foreground shadow-lg hover:bg-[hsl(var(--terracotta-deep))] transition-all ${open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 scale-100'}`}
+        onClick={handleLauncherClick}
+        className={`group fixed z-50 bottom-20 right-5 sm:bottom-24 sm:right-6 inline-flex items-center gap-2.5 pl-4 pr-5 py-3.5 bg-primary text-primary-foreground shadow-2xl hover:bg-[hsl(var(--terracotta-deep))] hover:scale-105 transition-all ${open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 scale-100'}`}
         aria-label={t('Apri assistenza chat', 'Open help chat')}
         data-testid="chat-launcher"
+        style={{ boxShadow: '0 12px 36px -8px hsl(var(--terracotta) / 0.6)' }}
       >
-        <MessageCircle className="w-5 h-5" />
-        <span className="text-sm font-medium">{t('Assistenza', 'Help')}</span>
+        <span className="relative">
+          <MessageCircle className="w-6 h-6" />
+          <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-400 ${showTip ? 'animate-ping' : ''}`} />
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-400" />
+        </span>
+        <span className="text-sm font-semibold tracking-wide">{t('Assistenza', 'Help')}</span>
       </button>
 
       {/* Chat panel — full screen on mobile, floating on desktop */}

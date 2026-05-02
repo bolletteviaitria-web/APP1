@@ -42,6 +42,27 @@ export const AdminDashboard = () => {
     navigate('/');
   };
 
+  const downloadBackup = async () => {
+    try {
+      const res = await axios.get(`${API}/admin/backup`);
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `terracito-backup-${ts}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const counts = res.data?.counts || {};
+      const total = Object.values(counts).reduce((s, n) => s + (n || 0), 0);
+      toast.success(t('common.error') === 'common.error'
+        ? `Backup scaricato (${total} record)`
+        : `Backup downloaded (${total} records)`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Backup failed');
+    }
+  };
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardData, setDashboardData] = useState(null);
   const [properties, setProperties] = useState([]);
@@ -260,7 +281,7 @@ export const AdminDashboard = () => {
             ))}
           </nav>
 
-          {/* Footer actions: torna al sito + esci */}
+          {/* Footer actions: torna al sito + backup + esci */}
           <div className="pt-6 mt-6 border-t border-border/40 space-y-2">
             <Link
               to="/"
@@ -270,6 +291,15 @@ export const AdminDashboard = () => {
               <Home className="w-5 h-5" />
               {lang === 'it' ? 'Torna al sito' : 'Back to site'}
             </Link>
+            <button
+              onClick={downloadBackup}
+              className="w-full flex items-center gap-3 px-4 py-3 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              data-testid="admin-backup-btn"
+              title={lang === 'it' ? 'Scarica un backup JSON di tutti i dati' : 'Download a JSON backup of all data'}
+            >
+              <Download className="w-5 h-5" />
+              {lang === 'it' ? 'Esporta backup' : 'Export backup'}
+            </button>
             <button
               onClick={handleAdminLogout}
               className="w-full flex items-center gap-3 px-4 py-3 text-destructive hover:bg-destructive/10 transition-colors"
