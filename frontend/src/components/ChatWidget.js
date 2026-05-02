@@ -137,6 +137,7 @@ export const ChatWidget = () => {
         content: res.data.reply,
         needs_host_contact: res.data.needs_host_contact,
         whatsapp_number: res.data.whatsapp_number,
+        images: res.data.images || [],
         ts: new Date().toISOString()
       }]);
     } catch (err) {
@@ -332,6 +333,27 @@ export const ChatWidget = () => {
                 }`}
               >
                 {m.content}
+                {m.role === 'assistant' && Array.isArray(m.images) && m.images.length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-1.5" data-testid="chat-images-grid">
+                    {m.images.map((img, i) => (
+                      <a
+                        key={`${img.url}-${i}`}
+                        href={img.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block overflow-hidden rounded-sm border border-border/50 hover:opacity-90 transition-opacity"
+                        data-testid={`chat-image-${i}`}
+                      >
+                        <img
+                          src={img.url}
+                          alt={img.alt || 'casa'}
+                          loading="lazy"
+                          className="w-full h-24 object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {m.role === 'assistant' && m.needs_host_contact && (
                   <a
                     href={`tel:${cleanWhatsappNumber(m.whatsapp_number) || fallbackWa}`}

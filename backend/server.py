@@ -1555,10 +1555,17 @@ class ChatRequest(BaseModel):
     language: Optional[str] = None          # 'it' or 'en' (hint; AI auto-detects too)
     booking_code: Optional[str] = None      # if provided + valid, sensitive info is unlocked
 
+class ChatResponseImage(BaseModel):
+    url: str
+    alt: Optional[str] = ""
+    property_slug: Optional[str] = ""
+
+
 class ChatResponse(BaseModel):
     reply: str
     needs_host_contact: bool = False
     whatsapp_number: str = WHATSAPP_NUMBER
+    images: List[ChatResponseImage] = []
 
 
 def _format_welcome_manual(p: dict, unlock_sensitive: bool) -> str:
@@ -1881,6 +1888,17 @@ async def _build_system_prompt(
         "- The guest will NEVER see this line; it's stripped server-side."
     )
 
+    images_protocol = (
+        "## PHOTO GALLERY PROTOCOL\n"
+        "If the guest asks to SEE more photos of the house (examples: \"altre foto\", \"posso vedere foto\", "
+        "\"mi fai vedere la cucina\", \"show me pictures\"), append on its own line a marker like:\n"
+        "<SHOW_IMAGES>current</SHOW_IMAGES>  (uses the house the guest is currently viewing)\n"
+        "or <SHOW_IMAGES>villa-smeraldo</SHOW_IMAGES>  (to show a specific house by slug)\n"
+        "or <SHOW_IMAGES>current:4</SHOW_IMAGES>  (optional max count, default 6, max 10)\n"
+        "The server will attach the real images to the reply — do NOT try to describe or fabricate URLs. "
+        "Only emit the marker when photos are actually requested, not on every turn."
+    )
+
     if property_doc:
         calendar_block = await _format_blocked_dates(property_doc["id"])
         availability_block = ""
@@ -1938,6 +1956,7 @@ async def _build_system_prompt(
         + "\n\n" + flow
         + "\n\n## RULES\n- " + "\n- ".join(rules)
         + "\n\n" + lead_protocol
+        + "\n\n" + images_protocol
         + "\n\n" + known_block
         + "\n\n## DATA\n" + knowledge
     )
@@ -1967,12 +1986,56 @@ async def _resolve_property(property_id_or_slug: Optional[str]) -> Optional[dict
 # Regex to find the hidden LEAD tag appended by the LLM at the end of each reply.
 _LEAD_RE = _re.compile(r"<LEAD>(\{.*?\})</LEAD>", flags=_re.DOTALL | _re.IGNORECASE)
 
+# Regex to find image-gallery requests the LLM emits on its own line.
+# Format: <SHOW_IMAGES>slug</SHOW_IMAGES>  OR  <SHOW_IMAGES>slug:N</SHOW_IMAGES>
+_IMAGES_RE = _re.compile(r"<SHOW_IMAGES>\s*([^<:\s]+)(?::(\d+))?\s*</SHOW_IMAGES>", flags=_re.IGNORECASE)
+
 _LEAD_FIELDS = {"guest_name", "phone", "email", "reason", "dates", "guests_count", "origin_city"}
 
 
 def _strip_lead_tag(text: str) -> str:
     """Remove the <LEAD>{...}</LEAD> block from the reply shown to the guest."""
     return _LEAD_RE.sub("", text).rstrip()
+
+
+def _strip_images_tag(text: str) -> str:
+    """Remove every <SHOW_IMAGES>…</SHOW_IMAGES> marker from the reply."""
+    return _IMAGES_RE.sub("", text).strip()
+
+
+async def _resolve_images_tag(text: str, fallback_property: Optional[dict]) -> List[dict]:
+    """For every <SHOW_IMAGES> marker in the reply, load the property's photos and return them.
+    Falls back to the currently-open property when the LLM omits the slug."""
+    out: List[dict] = []
+    seen_urls = set()
+    matches = list(_IMAGES_RE.finditer(text))
+    if not matches:
+        return out
+
+    for m in matches:
+        slug = (m.group(1) or "").strip().lower()
+        limit = int(m.group(2)) if m.group(2) else 6
+        limit = max(1, min(limit, 10))
+        p = None
+        if slug and slug not in ("current", "this", "questa"):
+            p = await db.properties.find_one(
+                {"$or": [{"slug": slug}, {"id": slug}]},
+                {"_id": 0, "slug": 1, "images": 1, "translations": 1}
+            )
+        if p is None and fallback_property:
+            p = fallback_property
+
+        if not p:
+            continue
+        imgs = p.get("images") or []
+        title = (p.get("translations", {}).get("it", {}) or {}).get("title") or p.get("slug") or ""
+        for img in imgs[:limit]:
+            url = img if isinstance(img, str) else (img.get("url") if isinstance(img, dict) else None)
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            out.append({"url": url, "alt": title, "property_slug": p.get("slug")})
+    return out
 
 
 async def _extract_and_store_lead(
@@ -2127,6 +2190,14 @@ async def chat_message(req: ChatRequest):
 
     reply_str = _strip_lead_tag(reply_str)
 
+    # Resolve optional <SHOW_IMAGES> markers into actual image URLs and strip the tags.
+    try:
+        reply_images = await _resolve_images_tag(reply_str, property_doc)
+    except Exception as img_err:
+        logger.warning(f"Image resolve failed (non-fatal): {img_err}")
+        reply_images = []
+    reply_str = _strip_images_tag(reply_str)
+
     needs_host_contact = WHATSAPP_NUMBER in reply_str or any(
         kw in reply_str.lower() for kw in ["contatta l'host", "contact the host", "chiama l'host", "call the host"]
     )
@@ -2142,7 +2213,12 @@ async def chat_message(req: ChatRequest):
         }}
     )
 
-    return ChatResponse(reply=reply_str, needs_host_contact=needs_host_contact, whatsapp_number=WHATSAPP_NUMBER)
+    return ChatResponse(
+        reply=reply_str,
+        needs_host_contact=needs_host_contact,
+        whatsapp_number=WHATSAPP_NUMBER,
+        images=reply_images or []
+    )
 
 
 @api_router.get("/admin/chat/conversations")
