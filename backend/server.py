@@ -212,6 +212,7 @@ class BookingCreate(BaseModel):
     guest_phone: str
     extras: List[str] = []
     notes: Optional[str] = None
+    payment_method: str = "stripe"  # "stripe" | "cash" | "bank_transfer"
 
 class BookingResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -229,7 +230,8 @@ class BookingResponse(BaseModel):
     total_price: float
     deposit_amount: float
     status: str  # pending, confirmed, cancelled, completed
-    payment_status: str  # pending, partial, paid, refunded
+    payment_method: Optional[str] = "stripe"
+    payment_status: str  # pending, partial, paid, refunded, awaiting_offline
     source: str  # direct, airbnb, booking
     created_at: str
 
@@ -558,7 +560,8 @@ async def create_booking(data: BookingCreate, user: dict = Depends(get_current_u
         "total_price": price_breakdown.total,
         "deposit_amount": price_breakdown.security_deposit,
         "status": "pending",
-        "payment_status": "pending",
+        "payment_method": data.payment_method or "stripe",
+        "payment_status": "pending" if (data.payment_method in (None, "stripe")) else "awaiting_offline",
         "source": "direct",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -2365,6 +2368,69 @@ async def update_ai_settings(body: AISettingsUpdate, user: dict = Depends(requir
         upsert=True
     )
     return {"ok": True, "custom_rules": rules}
+
+
+# ---- Site-wide settings (payment methods + IBAN) ---------------------------
+
+class SiteSettingsUpdate(BaseModel):
+    accept_stripe: Optional[bool] = None
+    accept_cash: Optional[bool] = None
+    accept_bank_transfer: Optional[bool] = None
+    iban: Optional[str] = None
+    iban_holder: Optional[str] = None
+    iban_bank: Optional[str] = None
+    iban_notes: Optional[str] = None
+
+
+SITE_SETTINGS_DEFAULT = {
+    "accept_stripe": True,
+    "accept_cash": False,
+    "accept_bank_transfer": False,
+    "iban": "",
+    "iban_holder": "",
+    "iban_bank": "",
+    "iban_notes": "",
+}
+
+
+@api_router.get("/admin/site-settings")
+async def get_site_settings_admin(user: dict = Depends(require_admin)):
+    doc = await db.site_settings.find_one({"id": "global"}, {"_id": 0})
+    if not doc:
+        return {"id": "global", **SITE_SETTINGS_DEFAULT, "updated_at": None}
+    return {**SITE_SETTINGS_DEFAULT, **doc}
+
+
+@api_router.put("/admin/site-settings")
+async def update_site_settings(body: SiteSettingsUpdate, user: dict = Depends(require_admin)):
+    payload = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    payload["updated_by"] = user.get("email")
+    await db.site_settings.update_one(
+        {"id": "global"},
+        {"$set": payload, "$setOnInsert": {"id": "global", "created_at": payload["updated_at"]}},
+        upsert=True,
+    )
+    doc = await db.site_settings.find_one({"id": "global"}, {"_id": 0})
+    return {**SITE_SETTINGS_DEFAULT, **(doc or {})}
+
+
+@api_router.get("/site-settings")
+async def get_site_settings_public():
+    """Public subset: which payment methods are enabled + the IBAN + beneficiary name.
+    Guests NEED the IBAN to complete a bank transfer, so it's not a secret."""
+    doc = await db.site_settings.find_one({"id": "global"}, {"_id": 0}) or {}
+    merged = {**SITE_SETTINGS_DEFAULT, **doc}
+    return {
+        "accept_stripe": bool(merged.get("accept_stripe", True)),
+        "accept_cash": bool(merged.get("accept_cash", False)),
+        "accept_bank_transfer": bool(merged.get("accept_bank_transfer", False)),
+        # IBAN fields are exposed publicly ONLY when bank transfer is enabled.
+        "iban": merged.get("iban", "") if merged.get("accept_bank_transfer") else "",
+        "iban_holder": merged.get("iban_holder", "") if merged.get("accept_bank_transfer") else "",
+        "iban_bank": merged.get("iban_bank", "") if merged.get("accept_bank_transfer") else "",
+        "iban_notes": merged.get("iban_notes", "") if merged.get("accept_bank_transfer") else "",
+    }
 
 
 @api_router.post("/chat/upload-document")

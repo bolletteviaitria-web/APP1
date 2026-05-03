@@ -527,10 +527,10 @@ export const PropertyDetailPage = () => {
                   modifiers={calendarModifiers}
                   modifiersClassNames={calendarModifiersClassNames}
                   classNames={{
-                    day_selected: '!bg-[hsl(145_55%_28%)] !text-white hover:!bg-[hsl(145_55%_24%)] focus:!bg-[hsl(145_55%_24%)]',
-                    day_range_start: '!bg-[hsl(145_55%_28%)] !text-white !rounded-l-sm',
-                    day_range_end: '!bg-[hsl(145_55%_28%)] !text-white !rounded-r-sm',
-                    day_range_middle: '!bg-[hsl(145_45%_85%)] !text-[hsl(145_55%_20%)] hover:!bg-[hsl(145_45%_78%)]',
+                    day_selected: '!bg-green-700 !text-white hover:!bg-green-800 focus:!bg-green-800',
+                    day_range_start: '!bg-green-700 !text-white !rounded-l-sm',
+                    day_range_end: '!bg-green-700 !text-white !rounded-r-sm',
+                    day_range_middle: '!bg-green-200 !text-green-900 hover:!bg-green-300',
                   }}
                   locale={dateLocale}
                   numberOfMonths={1}

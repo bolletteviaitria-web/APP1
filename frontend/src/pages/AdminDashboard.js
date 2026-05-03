@@ -94,6 +94,12 @@ export const AdminDashboard = () => {
   const [aiRules, setAiRules] = useState('');
   const [aiRulesLoaded, setAiRulesLoaded] = useState(false);
   const [savingAiRules, setSavingAiRules] = useState(false);
+  const [siteSettings, setSiteSettings] = useState({
+    accept_stripe: true, accept_cash: false, accept_bank_transfer: false,
+    iban: '', iban_holder: '', iban_bank: '', iban_notes: ''
+  });
+  const [siteSettingsLoaded, setSiteSettingsLoaded] = useState(false);
+  const [savingSiteSettings, setSavingSiteSettings] = useState(false);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
@@ -308,6 +314,10 @@ export const AdminDashboard = () => {
         const res = await axios.get(`${API}/admin/ai-settings`);
         setAiRules(res.data.custom_rules || '');
         setAiRulesLoaded(true);
+      } else if (activeTab === 'payments') {
+        const res = await axios.get(`${API}/admin/site-settings`);
+        setSiteSettings({ ...siteSettings, ...res.data });
+        setSiteSettingsLoaded(true);
       }
     } catch (error) {
       console.error('Fetch error:', error);
@@ -425,6 +435,7 @@ export const AdminDashboard = () => {
     { id: 'chat', label: lang === 'it' ? 'Chat AI' : 'AI Chat', icon: Bot },
     { id: 'leads', label: lang === 'it' ? 'Lead Chat' : 'Chat Leads', icon: Users },
     { id: 'ai-settings', label: lang === 'it' ? 'Assistente AI' : 'AI Assistant', icon: Settings },
+    { id: 'payments', label: lang === 'it' ? 'Pagamenti' : 'Payments', icon: Euro },
   ];
 
   return (
@@ -1425,6 +1436,125 @@ export const AdminDashboard = () => {
               </div>
             </div>
           )}
+
+          {/* Payments Tab */}
+          {activeTab === 'payments' && (
+            <div className="space-y-6 max-w-3xl" data-testid="payments-tab">
+              <div>
+                <h1 className="text-3xl font-display font-medium">
+                  {lang === 'it' ? 'Metodi di pagamento' : 'Payment methods'}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {lang === 'it'
+                    ? 'Abilita i metodi di pagamento che accetti e inserisci i dati bancari (IBAN) per ricevere bonifici.'
+                    : 'Enable the payment methods you accept and fill your IBAN details to receive transfers.'}
+                </p>
+              </div>
+
+              <div className="surface-card p-5 space-y-4">
+                <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                  {lang === 'it' ? 'Metodi abilitati' : 'Enabled methods'}
+                </h2>
+
+                {[
+                  { key: 'accept_stripe', label: lang === 'it' ? 'Carta di credito (Stripe)' : 'Credit card (Stripe)' },
+                  { key: 'accept_bank_transfer', label: lang === 'it' ? 'Bonifico bancario (IBAN)' : 'Bank transfer (IBAN)' },
+                  { key: 'accept_cash', label: lang === 'it' ? 'Contanti al check-in' : 'Cash at check-in' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center justify-between gap-4 py-2 border-b border-border/40 last:border-b-0">
+                    <span className="text-sm">{label}</span>
+                    <input
+                      type="checkbox"
+                      checked={!!siteSettings[key]}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, [key]: e.target.checked })}
+                      className="w-5 h-5 cursor-pointer"
+                      data-testid={`toggle-${key}`}
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div className="surface-card p-5 space-y-4">
+                <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
+                  {lang === 'it' ? 'Dati bancari (IBAN)' : 'Bank details (IBAN)'}
+                </h2>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  {lang === 'it'
+                    ? 'Mostrati all\u2019ospite nella pagina di conferma solo se il bonifico è abilitato.'
+                    : 'Shown to the guest on the confirmation page only when bank transfer is enabled.'}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">IBAN</label>
+                    <Input
+                      value={siteSettings.iban || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, iban: e.target.value.toUpperCase().replace(/\s+/g, '') })}
+                      placeholder="IT60X0542811101000000123456"
+                      className="font-mono tracking-wider"
+                      data-testid="iban-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      {lang === 'it' ? 'Intestatario' : 'Account holder'}
+                    </label>
+                    <Input
+                      value={siteSettings.iban_holder || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, iban_holder: e.target.value })}
+                      data-testid="iban-holder-input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      {lang === 'it' ? 'Banca' : 'Bank'}
+                    </label>
+                    <Input
+                      value={siteSettings.iban_bank || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, iban_bank: e.target.value })}
+                      data-testid="iban-bank-input"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                      {lang === 'it' ? 'Note per l\u2019ospite (opzionale)' : 'Notes for the guest (optional)'}
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={siteSettings.iban_notes || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, iban_notes: e.target.value })}
+                      className="w-full bg-card border border-border/60 px-3 py-2 text-sm resize-none"
+                      placeholder={lang === 'it' ? 'Es. Indicare la causale "PREN-xxxx" nel bonifico' : 'E.g. Include reference "PREN-xxxx"'}
+                      data-testid="iban-notes-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={async () => {
+                    setSavingSiteSettings(true);
+                    try {
+                      const res = await axios.put(`${API}/admin/site-settings`, siteSettings);
+                      setSiteSettings({ ...siteSettings, ...res.data });
+                      toast.success(lang === 'it' ? 'Impostazioni salvate' : 'Settings saved');
+                    } catch (e) {
+                      toast.error(e.response?.data?.detail || t('common.error'));
+                    } finally {
+                      setSavingSiteSettings(false);
+                    }
+                  }}
+                  disabled={!siteSettingsLoaded || savingSiteSettings}
+                  data-testid="save-payments-settings"
+                >
+                  {savingSiteSettings
+                    ? (lang === 'it' ? 'Salvataggio\u2026' : 'Saving\u2026')
+                    : (lang === 'it' ? 'Salva impostazioni' : 'Save settings')}
+                </Button>
+              </div>
+            </div>
+          )}
+
         </main>
 
         {/* Lead Documents Dialog */}

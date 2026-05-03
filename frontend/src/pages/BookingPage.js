@@ -29,7 +29,24 @@ export const BookingPage = () => {
     notes: ''
   });
   const [paymentType, setPaymentType] = useState('full');
+  const [paymentMethod, setPaymentMethod] = useState('stripe'); // 'stripe' | 'cash' | 'bank_transfer'
+  const [siteSettings, setSiteSettings] = useState({
+    accept_stripe: true, accept_cash: false, accept_bank_transfer: false,
+    iban: '', iban_holder: '', iban_bank: '', iban_notes: ''
+  });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Load public site settings (which payment methods are enabled + IBAN).
+    axios.get(`${API}/site-settings`).then((r) => {
+      setSiteSettings(r.data);
+      // Default to the first enabled method (stripe stays default if enabled).
+      if (!r.data.accept_stripe) {
+        if (r.data.accept_cash) setPaymentMethod('cash');
+        else if (r.data.accept_bank_transfer) setPaymentMethod('bank_transfer');
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!property || !dateRange || !priceBreakdown) {
@@ -46,27 +63,44 @@ export const BookingPage = () => {
     setLoading(true);
 
     try {
-      // Create booking
+      // Create booking with chosen payment method
       const bookingResponse = await axios.post(`${API}/bookings`, {
         property_id: property.id,
         check_in: format(dateRange.from, 'yyyy-MM-dd'),
         check_out: format(dateRange.to, 'yyyy-MM-dd'),
         guests,
         extras: selectedExtras,
+        payment_method: paymentMethod,
         ...formData
       });
 
       const bookingId = bookingResponse.data.id;
 
-      // Save booking id locally so success page can offer ID document upload
       try {
         localStorage.setItem('terracito.last_booking_id', bookingId);
       } catch (storageErr) {
-        // Storage may be disabled (private mode, quota, SecurityError). Non-blocking.
         warn('Could not persist booking id locally:', storageErr?.message || storageErr);
       }
 
-      // Create Stripe checkout session
+      // Offline flows: no Stripe redirect — show a confirmation screen.
+      if (paymentMethod === 'cash' || paymentMethod === 'bank_transfer') {
+        navigate('/booking/success', {
+          state: {
+            offline: true,
+            payment_method: paymentMethod,
+            booking_id: bookingId,
+            property_title: translation.title,
+            total: priceBreakdown.total,
+            iban: siteSettings.iban,
+            iban_holder: siteSettings.iban_holder,
+            iban_bank: siteSettings.iban_bank,
+            iban_notes: siteSettings.iban_notes,
+          }
+        });
+        return;
+      }
+
+      // Stripe online flow (original)
       const checkoutResponse = await axios.post(`${API}/payments/create-checkout`, null, {
         params: {
           booking_id: bookingId,
@@ -76,8 +110,6 @@ export const BookingPage = () => {
           'origin': window.location.origin
         }
       });
-
-      // Redirect to Stripe
       window.location.href = checkoutResponse.data.checkout_url;
     } catch (error) {
       console.error('Booking error:', error);
@@ -164,30 +196,73 @@ export const BookingPage = () => {
               {/* Payment Method */}
               <div className="glass p-6 space-y-6" data-testid="payment-method-form">
                 <h2 className="text-xl font-display font-medium">{t('booking.paymentMethod')}</h2>
-                
-                <RadioGroup value={paymentType} onValueChange={setPaymentType}>
-                  <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
-                    <RadioGroupItem value="full" id="full" data-testid="payment-full" />
-                    <div className="flex-1">
-                      <p className="font-medium">{t('booking.payFull')}</p>
-                      <p className="text-sm text-muted-foreground">€{priceBreakdown.total}</p>
-                    </div>
-                    <Check className={`w-5 h-5 ${paymentType === 'full' ? 'text-primary' : 'text-transparent'}`} />
-                  </label>
-                  
-                  <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
-                    <RadioGroupItem value="deposit" id="deposit" data-testid="payment-deposit" />
-                    <div className="flex-1">
-                      <p className="font-medium">{t('booking.payDeposit')}</p>
-                      <p className="text-sm text-muted-foreground">€{priceBreakdown.security_deposit}</p>
-                    </div>
-                    <Check className={`w-5 h-5 ${paymentType === 'deposit' ? 'text-primary' : 'text-transparent'}`} />
-                  </label>
-                </RadioGroup>
+
+                {/* Channel: online Stripe / cash / bank transfer */}
+                {(siteSettings.accept_stripe + siteSettings.accept_cash + siteSettings.accept_bank_transfer > 1) && (
+                  <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
+                    {siteSettings.accept_stripe && (
+                      <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+                        <RadioGroupItem value="stripe" id="pm-stripe" data-testid="pm-stripe" />
+                        <div className="flex-1">
+                          <p className="font-medium">{lang === 'it' ? 'Carta di credito (Stripe)' : 'Credit card (Stripe)'}</p>
+                          <p className="text-sm text-muted-foreground">{lang === 'it' ? 'Pagamento immediato online' : 'Instant online payment'}</p>
+                        </div>
+                        <Check className={`w-5 h-5 ${paymentMethod === 'stripe' ? 'text-primary' : 'text-transparent'}`} />
+                      </label>
+                    )}
+                    {siteSettings.accept_bank_transfer && (
+                      <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+                        <RadioGroupItem value="bank_transfer" id="pm-bank" data-testid="pm-bank-transfer" />
+                        <div className="flex-1">
+                          <p className="font-medium">{lang === 'it' ? 'Bonifico bancario (IBAN)' : 'Bank transfer (IBAN)'}</p>
+                          <p className="text-sm text-muted-foreground">{lang === 'it' ? 'Ricevi l\u2019IBAN dopo la conferma' : 'IBAN shown after confirmation'}</p>
+                        </div>
+                        <Check className={`w-5 h-5 ${paymentMethod === 'bank_transfer' ? 'text-primary' : 'text-transparent'}`} />
+                      </label>
+                    )}
+                    {siteSettings.accept_cash && (
+                      <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+                        <RadioGroupItem value="cash" id="pm-cash" data-testid="pm-cash" />
+                        <div className="flex-1">
+                          <p className="font-medium">{lang === 'it' ? 'Contanti al check-in' : 'Cash at check-in'}</p>
+                          <p className="text-sm text-muted-foreground">{lang === 'it' ? 'Paghi all\u2019arrivo, prenotazione confermata via host' : 'Pay on arrival, host will confirm'}</p>
+                        </div>
+                        <Check className={`w-5 h-5 ${paymentMethod === 'cash' ? 'text-primary' : 'text-transparent'}`} />
+                      </label>
+                    )}
+                  </RadioGroup>
+                )}
+
+                {/* Split: full vs deposit (only for Stripe) */}
+                {paymentMethod === 'stripe' && (
+                  <RadioGroup value={paymentType} onValueChange={setPaymentType}>
+                    <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+                      <RadioGroupItem value="full" id="full" data-testid="payment-full" />
+                      <div className="flex-1">
+                        <p className="font-medium">{t('booking.payFull')}</p>
+                        <p className="text-sm text-muted-foreground">€{priceBreakdown.total}</p>
+                      </div>
+                      <Check className={`w-5 h-5 ${paymentType === 'full' ? 'text-primary' : 'text-transparent'}`} />
+                    </label>
+
+                    <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+                      <RadioGroupItem value="deposit" id="deposit" data-testid="payment-deposit" />
+                      <div className="flex-1">
+                        <p className="font-medium">{t('booking.payDeposit')}</p>
+                        <p className="text-sm text-muted-foreground">€{priceBreakdown.security_deposit}</p>
+                      </div>
+                      <Check className={`w-5 h-5 ${paymentType === 'deposit' ? 'text-primary' : 'text-transparent'}`} />
+                    </label>
+                  </RadioGroup>
+                )}
 
                 <div className="flex items-center gap-3 text-sm text-muted-foreground">
                   <CreditCard className="w-4 h-4" />
-                  <span>{lang === 'it' ? 'Pagamento sicuro con Stripe' : 'Secure payment with Stripe'}</span>
+                  <span>
+                    {paymentMethod === 'stripe' && (lang === 'it' ? 'Pagamento sicuro con Stripe' : 'Secure payment with Stripe')}
+                    {paymentMethod === 'bank_transfer' && (lang === 'it' ? 'IBAN fornito dopo la conferma' : 'IBAN provided after confirmation')}
+                    {paymentMethod === 'cash' && (lang === 'it' ? 'Pagamento in contanti al check-in' : 'Cash on arrival')}
+                  </span>
                 </div>
               </div>
 
@@ -205,7 +280,11 @@ export const BookingPage = () => {
                   </>
                 ) : (
                   <>
-                    {t('booking.confirm')} - €{paymentAmount}
+                    {paymentMethod === 'stripe'
+                      ? `${t('booking.confirm')} - €${paymentAmount}`
+                      : paymentMethod === 'bank_transfer'
+                        ? (lang === 'it' ? 'Conferma e ricevi IBAN' : 'Confirm & get IBAN')
+                        : (lang === 'it' ? 'Conferma (paghi al check-in)' : 'Confirm (pay on arrival)')}
                   </>
                 )}
               </Button>
@@ -264,13 +343,15 @@ export const BookingPage = () => {
 
 export const BookingSuccessPage = () => {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
   const sessionId = searchParams.get('session_id');
-  const [status, setStatus] = useState('checking');
+  const offlineState = location.state || null;
+  const [status, setStatus] = useState(offlineState?.offline ? 'offline' : 'checking');
   const [paymentInfo, setPaymentInfo] = useState(null);
-  const [bookingId, setBookingId] = useState(null);
+  const [bookingId, setBookingId] = useState(offlineState?.booking_id || null);
 
   const pollPaymentStatus = useCallback(async (attempts = 0) => {
     if (attempts >= 5) {
@@ -295,6 +376,7 @@ export const BookingSuccessPage = () => {
   }, [sessionId]);
 
   useEffect(() => {
+    if (offlineState?.offline) return; // skip polling for cash/bank paths
     try {
       const stored = localStorage.getItem('terracito.last_booking_id');
       if (stored) setBookingId(stored);
@@ -304,11 +386,69 @@ export const BookingSuccessPage = () => {
     if (sessionId) {
       pollPaymentStatus();
     }
-  }, [sessionId, pollPaymentStatus]);
+  }, [sessionId, pollPaymentStatus, offlineState]);
 
   return (
     <div className="min-h-screen pt-20 pb-16 flex items-center justify-center" data-testid="booking-success-page">
       <div className="max-w-xl w-full mx-auto px-6 text-center">
+        {status === 'offline' && offlineState && (
+          <>
+            <div className="w-20 h-20 mx-auto mb-6 bg-primary/20 rounded-full flex items-center justify-center">
+              <Check className="w-10 h-10 text-primary" />
+            </div>
+            <h1 className="text-3xl font-display font-medium mb-4">
+              {lang === 'it' ? 'Prenotazione ricevuta!' : 'Booking received!'}
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              {offlineState.payment_method === 'bank_transfer'
+                ? (lang === 'it'
+                    ? `Effettua il bonifico di €${offlineState.total} utilizzando i dati qui sotto. La prenotazione sarà confermata al ricevimento del pagamento.`
+                    : `Please transfer €${offlineState.total} using the details below. Your booking will be confirmed upon receipt of payment.`)
+                : (lang === 'it'
+                    ? `Paga €${offlineState.total} in contanti al check-in. Ti contatteremo per confermare i dettagli di arrivo.`
+                    : `Pay €${offlineState.total} in cash at check-in. We'll contact you to confirm arrival details.`)}
+            </p>
+
+            {offlineState.payment_method === 'bank_transfer' && offlineState.iban && (
+              <div className="text-left bg-card border border-border/60 p-4 mb-6 text-sm space-y-1.5">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">IBAN</span>
+                  <code className="font-mono tracking-wider">{offlineState.iban}</code>
+                </div>
+                {offlineState.iban_holder && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{lang === 'it' ? 'Intestatario' : 'Account holder'}</span>
+                    <span>{offlineState.iban_holder}</span>
+                  </div>
+                )}
+                {offlineState.iban_bank && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{lang === 'it' ? 'Banca' : 'Bank'}</span>
+                    <span>{offlineState.iban_bank}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4 pt-1.5 border-t border-border/40">
+                  <span className="text-muted-foreground">{lang === 'it' ? 'Causale' : 'Reference'}</span>
+                  <code className="font-mono">{`PREN-${offlineState.booking_id?.slice(0, 8)}`}</code>
+                </div>
+                {offlineState.iban_notes && (
+                  <p className="text-xs text-muted-foreground pt-2">{offlineState.iban_notes}</p>
+                )}
+              </div>
+            )}
+
+            {bookingId && (
+              <div className="my-8">
+                <DocumentUpload bookingId={bookingId} />
+              </div>
+            )}
+
+            <Button onClick={() => navigate('/')} className="btn-primary mt-4" data-testid="offline-home-btn">
+              {lang === 'it' ? 'Torna alla Home' : 'Back to Home'}
+            </Button>
+          </>
+        )}
+
         {status === 'checking' && (
           <>
             <Loader2 className="w-16 h-16 mx-auto mb-6 text-primary animate-spin" />
