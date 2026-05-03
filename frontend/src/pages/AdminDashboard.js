@@ -88,6 +88,9 @@ export const AdminDashboard = () => {
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [leadPropertyFilter, setLeadPropertyFilter] = useState('all');
   const [editingLead, setEditingLead] = useState(null);
+  const [aiRules, setAiRules] = useState('');
+  const [aiRulesLoaded, setAiRulesLoaded] = useState(false);
+  const [savingAiRules, setSavingAiRules] = useState(false);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
@@ -264,6 +267,10 @@ export const AdminDashboard = () => {
       } else if (activeTab === 'leads') {
         const res = await axios.get(`${API}/admin/chat/leads?limit=500`);
         setLeads(res.data);
+      } else if (activeTab === 'ai-settings') {
+        const res = await axios.get(`${API}/admin/ai-settings`);
+        setAiRules(res.data.custom_rules || '');
+        setAiRulesLoaded(true);
       }
     } catch (error) {
       console.error('Fetch error:', error);
@@ -380,6 +387,7 @@ export const AdminDashboard = () => {
     { id: 'sync', label: lang === 'it' ? 'Sync iCal' : 'iCal Sync', icon: Link2 },
     { id: 'chat', label: lang === 'it' ? 'Chat AI' : 'AI Chat', icon: Bot },
     { id: 'leads', label: lang === 'it' ? 'Lead Chat' : 'Chat Leads', icon: Users },
+    { id: 'ai-settings', label: lang === 'it' ? 'Assistente AI' : 'AI Assistant', icon: Settings },
   ];
 
   return (
@@ -1274,6 +1282,92 @@ export const AdminDashboard = () => {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            </div>
+          )}
+
+          {/* AI Assistant Settings Tab */}
+          {activeTab === 'ai-settings' && (
+            <div className="space-y-6 max-w-4xl" data-testid="ai-settings-tab">
+              <div>
+                <h1 className="text-3xl font-display font-medium">
+                  {lang === 'it' ? 'Addestramento Assistente AI' : 'AI Assistant Training'}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  {lang === 'it'
+                    ? 'Qui definisci le regole che l\u2019assistente virtuale deve seguire quando risponde agli ospiti. Scrivi in italiano, una regola per riga, in modo chiaro. Le modifiche sono attive entro 30 secondi (le sessioni chat in corso si aggiornano al prossimo messaggio).'
+                    : 'Define the rules the virtual assistant must follow when replying to guests. Write them in plain language, one per line. Changes take effect within 30 seconds (ongoing sessions update on the next message).'}
+                </p>
+              </div>
+
+              <div className="surface-card p-5 space-y-3">
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  {lang === 'it' ? 'Regole per l\u2019assistente' : 'Rules for the assistant'}
+                </label>
+                <textarea
+                  value={aiRules}
+                  onChange={(e) => setAiRules(e.target.value)}
+                  disabled={!aiRulesLoaded}
+                  rows={18}
+                  className="w-full bg-card border border-border/60 p-4 text-sm font-mono leading-relaxed resize-vertical"
+                  placeholder={lang === 'it'
+                    ? '- Prima di dire libero o prenotato, controlla sempre il calendario...\n- Non fare domande inutili...\n- ...'
+                    : '- Before saying available or booked, always check the calendar...'}
+                  data-testid="ai-rules-textarea"
+                />
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="text-xs text-muted-foreground">
+                    {lang === 'it'
+                      ? 'Suggerimento: parti da frasi brevi e concrete. Evita regole contraddittorie.'
+                      : 'Tip: keep rules short and concrete. Avoid contradictions.'}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!window.confirm(lang === 'it'
+                          ? 'Ripristinare le regole di default? Perderai le modifiche attuali.'
+                          : 'Restore default rules? Current edits will be lost.')) return;
+                        try {
+                          await axios.put(`${API}/admin/ai-settings`, { custom_rules: '' });
+                          const res = await axios.get(`${API}/admin/ai-settings`);
+                          setAiRules(res.data.custom_rules || '');
+                          toast.success(lang === 'it' ? 'Regole ripristinate' : 'Rules restored');
+                        } catch (e) {
+                          toast.error(e.response?.data?.detail || t('common.error'));
+                        }
+                      }}
+                      data-testid="ai-rules-reset"
+                    >
+                      {lang === 'it' ? 'Ripristina default' : 'Restore defaults'}
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        setSavingAiRules(true);
+                        try {
+                          await axios.put(`${API}/admin/ai-settings`, { custom_rules: aiRules });
+                          toast.success(lang === 'it' ? 'Regole salvate' : 'Rules saved');
+                        } catch (e) {
+                          toast.error(e.response?.data?.detail || t('common.error'));
+                        } finally {
+                          setSavingAiRules(false);
+                        }
+                      }}
+                      disabled={savingAiRules || !aiRulesLoaded}
+                      data-testid="ai-rules-save"
+                    >
+                      {savingAiRules
+                        ? (lang === 'it' ? 'Salvataggio\u2026' : 'Saving\u2026')
+                        : (lang === 'it' ? 'Salva regole' : 'Save rules')}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/30 pl-4 py-2">
+                {lang === 'it'
+                  ? 'Ricorda: queste regole vanno SOPRA le regole base del sistema (tono WhatsApp, dati verificati, brevità). Le cose che NON puoi cambiare da qui sono: il nome del sito, il numero host, la struttura dei prezzi (quelli si modificano dalla scheda proprietà).'
+                  : 'Note: these rules stack ON TOP of the built-in ones (WhatsApp tone, verified data, brevity). Things you CANNOT change here: site name, host number, price structure (edit those from the property form).'}
               </div>
             </div>
           )}

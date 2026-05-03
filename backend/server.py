@@ -1890,6 +1890,14 @@ async def _build_system_prompt(
     if language_hint in {"it", "en"}:
         rules.append(f"Lingua UI dell'ospite: '{language_hint}', parti da quella.")
 
+    # Admin-editable custom rules (loaded from ai_settings collection).
+    # These are appended LAST so they take precedence over the built-in ones in case of conflict.
+    custom_rules_text = await _get_custom_ai_rules()
+    custom_rules_section = (
+        "## REGOLE PERSONALIZZATE DAL PROPRIETARIO — prevalgono sulle precedenti\n"
+        + custom_rules_text
+    ) if custom_rules_text.strip() else ""
+
     lead_protocol = (
         "## LEAD CAPTURE PROTOCOL — MANDATORY\n"
         "At the very end of EVERY reply, append a single line with a hidden JSON tag "
@@ -1919,16 +1927,14 @@ async def _build_system_prompt(
 
     if property_doc:
         calendar_block = await _format_blocked_dates(property_doc["id"])
-        availability_block = ""
-        if user_message:
-            availability_block = await _format_availability_result(
-                property_doc["id"], user_message, language_hint or "it"
-            )
+        # NOTE: AVAILABILITY_RESULT (computed per user message) is NO LONGER added here.
+        # If we kept it in the system prompt, prompt_hash would change every turn and the
+        # LlmChat cache would rebuild, wiping the conversation memory. It's now attached
+        # to the UserMessage content in `chat_message()` instead, preserving history.
         knowledge = (
             "## CURRENT PROPERTY (the guest is right now on this house's page — answer specific questions using THIS data first)\n\n"
             + _format_welcome_manual(property_doc, unlock_sensitive)
             + "\n\n" + calendar_block
-            + (("\n\n" + availability_block) if availability_block else "")
             + "\n\n## OTHER HOUSES IN THE CATALOG (mention only if the guest asks for alternatives)\n\n"
             + await _format_all_properties_summary()
         )
@@ -1973,6 +1979,7 @@ async def _build_system_prompt(
         base
         + "\n\n" + flow
         + "\n\n## RULES\n- " + "\n- ".join(rules)
+        + (("\n\n" + custom_rules_section) if custom_rules_section else "")
         + "\n\n" + lead_protocol
         + "\n\n" + images_protocol
         + "\n\n" + known_block
@@ -2181,8 +2188,24 @@ async def chat_message(req: ChatRequest):
         upsert=True
     )
 
+    # Compute availability per-turn and attach to THIS user message only.
+    # This keeps the system prompt stable (→ LlmChat cache survives → memory preserved)
+    # while still giving the model server-verified facts for this specific question.
+    availability_prefix = ""
+    if property_doc and req.message:
+        try:
+            availability_prefix = await _format_availability_result(
+                property_doc["id"], req.message, req.language or "it"
+            )
+        except Exception as av_err:
+            logger.warning(f"Availability check failed (non-fatal): {av_err}")
+    user_text_for_llm = (
+        (availability_prefix + "\n\n---\nGuest message:\n" + req.message)
+        if availability_prefix else req.message
+    )
+
     try:
-        reply = await chat.send_message(UserMessage(text=req.message))
+        reply = await chat.send_message(UserMessage(text=user_text_for_llm))
     except Exception as e:
         err_str = str(e)
         logger.error(f"LLM call failed: {err_str}")
@@ -2270,6 +2293,50 @@ async def list_chat_leads(
         q["status"] = status
     items = await db.chat_leads.find(q, {"_id": 0}).sort("last_update", -1).limit(limit).to_list(limit)
     return items
+
+
+# Default custom rules that populate the admin textarea on first boot — can be freely edited later.
+DEFAULT_AI_CUSTOM_RULES = """- Prima di dire "libero" o "prenotato", devi eseguire un controllo reale del database (vedi BOOKING_CALENDAR e AVAILABILITY_RESULT server-verified). Non rispondere mai d'istinto.
+- Non fare domande che non siano strettamente necessarie a confermare date, persone e prezzo.
+- Se non sei sicuro della disponibilità (nessun AVAILABILITY_RESULT ancora computato), dillo subito: "Verifico, 5 secondi."
+- Una volta che il cliente ha detto "procediamo" (o equivalente: "ok", "va bene", "prenoto"), NON tornare indietro e NON proporre modifiche allo stesso preventivo. Conferma e basta.
+- Se ti accorgi di aver sbagliato qualcosa (prezzo errato, data sbagliata, info incorretta), scusati in modo CONCRETO: "Scusa, ho scritto male prima. Il prezzo esatto è €X" — non limitarti a un generico "mi scuso".
+- NON dimenticare quello che tu stesso hai detto nei messaggi precedenti. Se hai detto un prezzo, rispettalo. Se hai confermato una data, confermala ancora."""
+
+
+async def _get_custom_ai_rules() -> str:
+    """Load the admin-editable rules block. Falls back to defaults if missing."""
+    doc = await db.ai_settings.find_one({"id": "global"}, {"_id": 0, "custom_rules": 1})
+    if doc and doc.get("custom_rules"):
+        return doc["custom_rules"]
+    return DEFAULT_AI_CUSTOM_RULES
+
+
+class AISettingsUpdate(BaseModel):
+    custom_rules: str
+
+
+@api_router.get("/admin/ai-settings")
+async def get_ai_settings(user: dict = Depends(require_admin)):
+    doc = await db.ai_settings.find_one({"id": "global"}, {"_id": 0})
+    if not doc:
+        doc = {"id": "global", "custom_rules": DEFAULT_AI_CUSTOM_RULES, "updated_at": None}
+    return doc
+
+
+@api_router.put("/admin/ai-settings")
+async def update_ai_settings(body: AISettingsUpdate, user: dict = Depends(require_admin)):
+    rules = (body.custom_rules or "").strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.ai_settings.update_one(
+        {"id": "global"},
+        {
+            "$set": {"custom_rules": rules, "updated_at": now_iso, "updated_by": user.get("email")},
+            "$setOnInsert": {"id": "global", "created_at": now_iso}
+        },
+        upsert=True
+    )
+    return {"ok": True, "custom_rules": rules}
 
 
 class ChatLeadUpdate(BaseModel):
