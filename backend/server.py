@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Header, UploadFile, File, Query, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Header, UploadFile, File, Form, Query, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -2360,6 +2360,106 @@ async def update_ai_settings(body: AISettingsUpdate, user: dict = Depends(requir
         upsert=True
     )
     return {"ok": True, "custom_rules": rules}
+
+
+@api_router.post("/chat/upload-document")
+async def chat_upload_document(
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    property_id: Optional[str] = Form(None),
+):
+    """Guest-side upload while chatting with the assistant. No auth: session_id acts as the key."""
+    if not session_id or len(session_id) < 8:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    if file.content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail=f"File type not allowed: {file.content_type}")
+    data = await file.read()
+    if len(data) > MAX_DOC_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    doc_id = str(uuid.uuid4())
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "bin"
+    safe_ext = _re.sub(r"[^a-z0-9]", "", ext)[:6] or "bin"
+    path = f"chat-documents/{session_id}/{doc_id}.{safe_ext}"
+    put_object(path, data, file.content_type)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    record = {
+        "id": doc_id,
+        "session_id": session_id,
+        "property_id": property_id,
+        "filename": file.filename or f"document.{safe_ext}",
+        "content_type": file.content_type,
+        "size": len(data),
+        "storage_path": path,
+        "uploaded_at": now_iso,
+    }
+    await db.chat_documents.insert_one(record)
+
+    # Also append a system-style message to the conversation transcript so admin sees the attachment inline.
+    await db.chat_conversations.update_one(
+        {"session_id": session_id},
+        {
+            "$setOnInsert": {"session_id": session_id, "started_at": now_iso},
+            "$set": {"last_active_at": now_iso},
+            "$push": {
+                "messages": {
+                    "role": "user",
+                    "content": f"[Allegato ricevuto: {file.filename or safe_ext}]",
+                    "attachment_id": doc_id,
+                    "attachment_filename": file.filename,
+                    "attachment_type": file.content_type,
+                    "ts": now_iso,
+                }
+            }
+        },
+        upsert=True
+    )
+
+    # Link to the lead if one exists for this session (create a lightweight one otherwise).
+    await db.chat_leads.update_one(
+        {"session_id": session_id},
+        {
+            "$setOnInsert": {
+                "session_id": session_id,
+                "id": str(uuid.uuid4()),
+                "created_at": now_iso,
+                "status": "new"
+            },
+            "$set": {"last_update": now_iso, "has_documents": True},
+            "$inc": {"documents_count": 1}
+        },
+        upsert=True
+    )
+
+    # Remove any cached record for this session from the in-memory dict to drop the _id
+    return {
+        "id": doc_id,
+        "filename": record["filename"],
+        "size": len(data),
+        "uploaded_at": now_iso,
+    }
+
+
+@api_router.get("/admin/chat/documents/{session_id}")
+async def list_chat_documents(session_id: str, user: dict = Depends(require_admin)):
+    docs = await db.chat_documents.find({"session_id": session_id}, {"_id": 0, "storage_path": 0}).sort("uploaded_at", -1).to_list(100)
+    return docs
+
+
+@api_router.get("/admin/chat/documents/{session_id}/{doc_id}/download")
+async def download_chat_document(session_id: str, doc_id: str, user: dict = Depends(require_admin)):
+    rec = await db.chat_documents.find_one({"session_id": session_id, "id": doc_id}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Document not found")
+    content, ctype = get_object(rec["storage_path"])
+    return Response(
+        content=content,
+        media_type=ctype,
+        headers={"Content-Disposition": f"inline; filename=\"{rec.get('filename', 'document')}\""}
+    )
 
 
 class ChatLeadUpdate(BaseModel):

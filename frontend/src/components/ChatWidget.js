@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
-import { MessageCircle, X, Send, Loader2, Phone, KeyRound } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Phone, KeyRound, Paperclip, FileText } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -67,6 +67,8 @@ export const ChatWidget = () => {
   const sessionId = useMemo(() => getSessionId(), []);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   // Auto-detect property slug from current route /property/:slug
   const propertySlug = useMemo(() => {
@@ -193,6 +195,104 @@ export const ChatWidget = () => {
       console.warn('ChatWidget: failed to persist tooltip dismiss', e);
     }
     setOpen((o) => !o);
+  };
+
+  const handleFilePick = () => {
+    if (uploading || sending) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-uploading the same file later
+    if (!file) return;
+
+    // Client-side checks mirror the backend ones
+    const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf'];
+    if (!ok.includes(file.type)) {
+      setMessages((prev) => [...prev, {
+        role: 'assistant', is_error: true, ts: new Date().toISOString(),
+        content: t(
+          `Formato non supportato. Carica JPG, PNG, WEBP, HEIC o PDF.`,
+          `Unsupported format. Please upload JPG, PNG, WEBP, HEIC or PDF.`
+        )
+      }]);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessages((prev) => [...prev, {
+        role: 'assistant', is_error: true, ts: new Date().toISOString(),
+        content: t('Il file è troppo grande (max 10 MB).', 'File too large (max 10 MB).')
+      }]);
+      return;
+    }
+
+    // Optimistic bubble
+    setMessages((prev) => [...prev, {
+      role: 'user',
+      ts: new Date().toISOString(),
+      attachment_filename: file.name,
+      attachment_type: file.type,
+      attachment_pending: true,
+      content: t(`Invio documento: ${file.name}\u2026`, `Uploading: ${file.name}\u2026`)
+    }]);
+
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('session_id', sessionId);
+      fd.append('file', file);
+      if (propertySlug) fd.append('property_id', propertySlug);
+      const res = await axios.post(`${API}/chat/upload-document`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setMessages((prev) => {
+        const copy = [...prev];
+        // replace the last pending bubble
+        for (let i = copy.length - 1; i >= 0; i--) {
+          if (copy[i].attachment_pending) {
+            copy[i] = {
+              role: 'user',
+              ts: copy[i].ts,
+              attachment_filename: res.data.filename,
+              attachment_type: file.type,
+              attachment_id: res.data.id,
+              content: t(`📎 Documento inviato: ${res.data.filename}`, `📎 Document sent: ${res.data.filename}`)
+            };
+            break;
+          }
+        }
+        // Add a system-like confirmation from the host
+        copy.push({
+          role: 'assistant',
+          ts: new Date().toISOString(),
+          content: t(
+            'Grazie, ho ricevuto il documento 👍 Lo faccio controllare e ti ricontatto appena possibile.',
+            'Thanks, I got the document 👍 I\u2019ll review it and get back to you shortly.'
+          )
+        });
+        return copy;
+      });
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message;
+      setMessages((prev) => {
+        const copy = [...prev];
+        for (let i = copy.length - 1; i >= 0; i--) {
+          if (copy[i].attachment_pending) {
+            copy[i] = {
+              role: 'assistant',
+              is_error: true,
+              ts: copy[i].ts,
+              content: t(`Errore upload: ${detail}`, `Upload error: ${detail}`)
+            };
+            break;
+          }
+        }
+        return copy;
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const cleanWhatsappNumber = (n) => (n || '').replace(/[^\d+]/g, '').replace(/^\+/, '');
@@ -333,6 +433,12 @@ export const ChatWidget = () => {
                 }`}
               >
                 {m.content}
+                {m.attachment_filename && !m.attachment_pending && (
+                  <div className="mt-2 inline-flex items-center gap-2 px-2.5 py-1.5 bg-background/30 border border-border/40 text-xs">
+                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-[180px]">{m.attachment_filename}</span>
+                  </div>
+                )}
                 {m.role === 'assistant' && Array.isArray(m.images) && m.images.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 gap-1.5" data-testid="chat-images-grid">
                     {m.images.map((img, i) => (
@@ -408,6 +514,24 @@ export const ChatWidget = () => {
               {t('Nuova', 'New')}
             </button>
           )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+            className="hidden"
+            onChange={handleFileSelected}
+            data-testid="chat-file-input"
+          />
+          <button
+            type="button"
+            onClick={handleFilePick}
+            disabled={uploading || sending}
+            title={t('Allega documento', 'Attach document')}
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50 p-2 transition-colors"
+            data-testid="chat-attach-btn"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+          </button>
           <input
             ref={inputRef}
             type="text"
