@@ -29,8 +29,32 @@ const QUICK_PROMPTS = {
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `s-${Date.now()}-${Math.random()}`);
 
-const getSessionId = () => {
-  try {
+// Turn any /prenota/... or absolute URL embedded in the assistant reply into a
+// clickable link. Keeps the rest of the text as-is (no markdown needed).
+const URL_RX = /(\/prenota\/[A-Za-z0-9_\-/?=&%.]+|https?:\/\/[^\s)]+)/g;
+const renderMessageContent = (text) => {
+  if (!text) return null;
+  const parts = String(text).split(URL_RX);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      return (
+        <a
+          key={`lnk-${i}`}
+          href={part}
+          target={part.startsWith('/') ? '_self' : '_blank'}
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 font-medium hover:opacity-80"
+          data-testid="chat-inline-link"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={`t-${i}`}>{part}</span>;
+  });
+};
+
+const getSessionId = () => {  try {
     let id = localStorage.getItem(SESSION_KEY);
     if (!id) { id = newId(); localStorage.setItem(SESSION_KEY, id); }
     return id;
@@ -433,7 +457,7 @@ export const ChatWidget = () => {
                       : 'bg-card border border-border text-foreground'
                 }`}
               >
-                {m.content}
+                {renderMessageContent(m.content)}
                 {m.attachment_filename && !m.attachment_pending && (
                   <div className="mt-2 inline-flex items-center gap-2 px-2.5 py-1.5 bg-background/30 border border-border/40 text-xs">
                     <FileText className="w-3.5 h-3.5 shrink-0" />

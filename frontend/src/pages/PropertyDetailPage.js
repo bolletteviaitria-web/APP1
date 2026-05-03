@@ -526,6 +526,12 @@ export const PropertyDetailPage = () => {
                   disabled={calendarDisabledRules}
                   modifiers={calendarModifiers}
                   modifiersClassNames={calendarModifiersClassNames}
+                  classNames={{
+                    day_selected: '!bg-[hsl(145_55%_28%)] !text-white hover:!bg-[hsl(145_55%_24%)] focus:!bg-[hsl(145_55%_24%)]',
+                    day_range_start: '!bg-[hsl(145_55%_28%)] !text-white !rounded-l-sm',
+                    day_range_end: '!bg-[hsl(145_55%_28%)] !text-white !rounded-r-sm',
+                    day_range_middle: '!bg-[hsl(145_45%_85%)] !text-[hsl(145_55%_20%)] hover:!bg-[hsl(145_45%_78%)]',
+                  }}
                   locale={dateLocale}
                   numberOfMonths={1}
                   className="bg-card border border-border/60 p-3"

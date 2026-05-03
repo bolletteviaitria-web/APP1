@@ -88,6 +88,9 @@ export const AdminDashboard = () => {
   const [leadStatusFilter, setLeadStatusFilter] = useState('all');
   const [leadPropertyFilter, setLeadPropertyFilter] = useState('all');
   const [editingLead, setEditingLead] = useState(null);
+  const [leadDocsOpen, setLeadDocsOpen] = useState(null); // holds lead obj
+  const [leadDocs, setLeadDocs] = useState([]);
+  const [leadDocsSearch, setLeadDocsSearch] = useState('');
   const [aiRules, setAiRules] = useState('');
   const [aiRulesLoaded, setAiRulesLoaded] = useState(false);
   const [savingAiRules, setSavingAiRules] = useState(false);
@@ -142,6 +145,40 @@ export const AdminDashboard = () => {
       toast.error(e.response?.data?.detail || t('common.error'));
     }
   };
+
+  const openLeadDocs = async (lead) => {
+    setLeadDocsOpen(lead);
+    setLeadDocs([]);
+    setLeadDocsSearch('');
+    try {
+      const res = await axios.get(`${API}/admin/chat/documents/${lead.session_id}`);
+      setLeadDocs(res.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const downloadLeadDoc = async (sessionId, doc) => {
+    try {
+      const res = await axios.get(`${API}/admin/chat/documents/${sessionId}/${doc.id}/download`, { responseType: 'blob' });
+      const cd = res.headers['content-disposition'] || '';
+      const match = cd.match(/filename="([^"]+)"/);
+      const filename = match ? match[1] : (doc.filename || 'documento');
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const filteredLeadDocs = leadDocs.filter((d) => {
+    const q = leadDocsSearch.trim().toLowerCase();
+    if (!q) return true;
+    return [d.filename, d.content_type, d.uploaded_at].some((v) => v && String(v).toLowerCase().includes(q));
+  });
+
 
   const exportLeadsCsv = () => {
     if (leads.length === 0) {
@@ -1198,6 +1235,7 @@ export const AdminDashboard = () => {
                       <TableHead>{lang === 'it' ? 'Motivo' : 'Reason'}</TableHead>
                       <TableHead>{lang === 'it' ? 'Date' : 'Dates'}</TableHead>
                       <TableHead>{lang === 'it' ? 'Casa' : 'House'}</TableHead>
+                      <TableHead>{lang === 'it' ? 'Doc' : 'Docs'}</TableHead>
                       <TableHead>{lang === 'it' ? 'Stato' : 'Status'}</TableHead>
                       <TableHead>{lang === 'it' ? 'Ultimo contatto' : 'Last update'}</TableHead>
                       <TableHead className="text-right">{lang === 'it' ? 'Azioni' : 'Actions'}</TableHead>
@@ -1206,7 +1244,7 @@ export const AdminDashboard = () => {
                   <TableBody>
                     {filteredLeads.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-10">
+                        <TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-10">
                           {lang === 'it'
                             ? 'Nessun lead trovato con i filtri attuali.'
                             : 'No leads match the current filters.'}
@@ -1233,6 +1271,19 @@ export const AdminDashboard = () => {
                           {l.property_slug
                             ? <Badge variant="secondary" className="text-[10px]">{l.property_title || l.property_slug}</Badge>
                             : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {l.has_documents ? (
+                            <button
+                              type="button"
+                              onClick={() => openLeadDocs(l)}
+                              className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                              data-testid={`lead-docs-btn-${l.session_id}`}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              {l.documents_count || 1}
+                            </button>
+                          ) : <span className="text-xs text-muted-foreground">0</span>}
                         </TableCell>
                         <TableCell>
                           <select
@@ -1375,6 +1426,59 @@ export const AdminDashboard = () => {
             </div>
           )}
         </main>
+
+        {/* Lead Documents Dialog */}
+        <Dialog open={!!leadDocsOpen} onOpenChange={(o) => !o && setLeadDocsOpen(null)}>
+          <DialogContent className="bg-card border-border/60 max-w-2xl" data-testid="lead-docs-dialog">
+            <DialogHeader>
+              <DialogTitle className="font-display">
+                {lang === 'it' ? 'Documenti ricevuti in chat' : 'Chat documents'}
+                {leadDocsOpen?.guest_name && <span className="text-sm text-muted-foreground ml-2">— {leadDocsOpen.guest_name}</span>}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2">
+              <Input
+                value={leadDocsSearch}
+                onChange={(e) => setLeadDocsSearch(e.target.value)}
+                placeholder={lang === 'it' ? 'Cerca per nome, tipo o data\u2026' : 'Search by name, type or date\u2026'}
+                data-testid="lead-docs-search"
+              />
+              <div className="border border-border/60 divide-y divide-border/50 max-h-[60vh] overflow-y-auto">
+                {filteredLeadDocs.length === 0 && (
+                  <div className="text-center text-sm text-muted-foreground py-8">
+                    {lang === 'it' ? 'Nessun documento trovato' : 'No documents found'}
+                  </div>
+                )}
+                {filteredLeadDocs.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-accent/30 transition-colors">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <div className="text-sm truncate">{d.filename || d.id}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {d.content_type?.split('/')[1]?.toUpperCase() || '—'}
+                          {' · '}
+                          {d.size ? (d.size / 1024).toFixed(0) + ' KB' : '—'}
+                          {' · '}
+                          {d.uploaded_at ? format(new Date(d.uploaded_at), 'dd/MM/yyyy HH:mm') : '—'}
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadLeadDoc(leadDocsOpen.session_id, d)}
+                      data-testid={`download-doc-${d.id}`}
+                    >
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      {lang === 'it' ? 'Scarica' : 'Download'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Lead Edit Dialog */}
         <Dialog open={!!editingLead} onOpenChange={(o) => !o && setEditingLead(null)}>

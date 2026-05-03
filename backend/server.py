@@ -1851,6 +1851,11 @@ async def _build_system_prompt(
         "se non ti è stato chiesto.\n"
         "- Se chiede date, verifica disponibilità (vedi BOOKING_CALENDAR e AVAILABILITY_RESULT sotto).\n"
         "- Se chiede di vedere foto, emetti il tag `<SHOW_IMAGES>current</SHOW_IMAGES>` su riga a sé.\n"
+        "- **LINK FINALIZZAZIONE**: quando sei pronto a chiudere (l'ospite ha detto \"procediamo\", \"ok prenoto\", o chiede come pagare), "
+        "mandagli un link pulito nel formato `/prenota/<slug>?checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&guests=N` "
+        "(usa le date e gli ospiti esatti che sono stati confermati nella conversazione, dallo slug della CURRENT PROPERTY). "
+        "Scrivilo come testo inline, non come markdown: \"Ti mando il link per finalizzare: /prenota/villa-smeraldo?checkin=2026-05-20&checkout=2026-05-23&guests=4\". "
+        "La pagina aprirà il form di prenotazione con tutto già pre-compilato.\n"
         "\n## DATI DELL'OSPITE — RACCOLTA GRADUALE\n"
         "- NON chiedere nome/telefono/email all'inizio: lascia parlare l'ospite e crea un minimo di fiducia.\n"
         "- Dopo 2–3 scambi, quando serve davvero (es. per controllare disponibilità o mandare prezzi), "
@@ -2455,10 +2460,27 @@ async def download_chat_document(session_id: str, doc_id: str, user: dict = Depe
     if not rec:
         raise HTTPException(status_code=404, detail="Document not found")
     content, ctype = get_object(rec["storage_path"])
+
+    # Build a pretty filename: {property_slug}_{dates}_{original_filename}
+    # Fallbacks keep it valid when lead info is missing.
+    original = rec.get("filename") or "document"
+    ext = original.rsplit(".", 1)[-1].lower() if "." in original else (rec.get("content_type", "").split("/")[-1] or "bin")
+    stem = original.rsplit(".", 1)[0] if "." in original else original
+    stem_safe = _re.sub(r"[^A-Za-z0-9]+", "-", stem).strip("-")[:40] or "doc"
+
+    lead = await db.chat_leads.find_one({"session_id": session_id}, {"_id": 0, "property_slug": 1, "dates": 1})
+    slug_part = (lead or {}).get("property_slug") or rec.get("property_id") or "casa"
+    dates_part = (lead or {}).get("dates") or ""
+    dates_safe = _re.sub(r"[^A-Za-z0-9]+", "-", dates_part).strip("-")[:24] if dates_part else ""
+    upload_day = (rec.get("uploaded_at") or "")[:10]
+
+    tokens = [t for t in [slug_part, dates_safe or upload_day, stem_safe] if t]
+    pretty = "_".join(tokens) + f".{ext}"
+
     return Response(
         content=content,
         media_type=ctype,
-        headers={"Content-Disposition": f"inline; filename=\"{rec.get('filename', 'document')}\""}
+        headers={"Content-Disposition": f'attachment; filename="{pretty}"'}
     )
 
 

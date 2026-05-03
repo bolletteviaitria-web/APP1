@@ -7,6 +7,7 @@ import { HomePage } from "./pages/HomePage";
 import { PropertiesPage } from "./pages/PropertiesPage";
 import { PropertyDetailPage } from "./pages/PropertyDetailPage";
 import { BookingPage, BookingSuccessPage } from "./pages/BookingPage";
+import { BookingShortcut } from "./pages/BookingShortcut";
 import { LoginPage } from "./pages/AuthPages";
 import { ContactPage } from "./pages/ContactPage";
 import { PrivacyPage, TermsPage } from "./pages/LegalPages";
@@ -27,6 +28,7 @@ function App() {
               <Route path="/property/:slug" element={<PropertyDetailPage />} />
               <Route path="/booking" element={<BookingPage />} />
               <Route path="/booking/success" element={<BookingSuccessPage />} />
+              <Route path="/prenota/:slug" element={<BookingShortcut />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/contact" element={<ContactPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
