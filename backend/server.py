@@ -1945,35 +1945,15 @@ async def _build_system_prompt(
             + await _format_all_properties_summary()
         )
 
-    # Known info already collected on this guest — CRITICAL so the AI stops
-    # re-asking details that are already in our records.
-    known_lines = []
-    if existing_lead:
-        label_map = [
-            ("guest_name", "Name"),
-            ("phone", "Phone"),
-            ("email", "Email"),
-            ("origin_city", "Origin city"),
-            ("reason", "Reason / occasion"),
-            ("dates", "Dates"),
-            ("guests_count", "Guests"),
-        ]
-        for key, label in label_map:
-            val = existing_lead.get(key)
-            if val not in (None, "", 0):
-                known_lines.append(f"- {label}: {val}")
-    if known_lines:
-        known_block = (
-            "## KNOWN_INFO — quello che so già sull'ospite. NON richiederlo. "
-            "Se c'è il nome, chiamalo per nome. Continua la conversazione naturalmente.\n"
-            + "\n".join(known_lines)
-        )
-    else:
-        known_block = (
-            "## KNOWN_INFO — ancora non so nulla sull'ospite. "
-            "NON chiedere nome/telefono/email al primo messaggio: aspetta di aver fatto almeno 2–3 scambi "
-            "e di aver capito cosa cerca, poi chiedi UNA cosa per volta in modo naturale."
-        )
+    # Known info is NOT put in the system prompt (it changes whenever the lead
+    # is updated → would invalidate prompt_hash → wipe LlmChat memory).
+    # It's instead prepended to each UserMessage in `chat_message()`.
+    known_block = (
+        "## KNOWN_INFO policy\n"
+        "Context about the guest (name, dates, phone, etc.) is attached to each of their messages "
+        "as a [SERVER_CONTEXT] block. Respect it: never ask again info already present. "
+        "If empty or missing, follow the progressive-collection rule in the flow above."
+    )
 
     return (
         base
@@ -2152,7 +2132,8 @@ async def chat_message(req: ChatRequest):
     prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
 
     cached = _chat_sessions.get(req.session_id)
-    if cached is None or cached.get("prompt_hash") != prompt_hash:
+    session_is_fresh = cached is None or cached.get("prompt_hash") != prompt_hash
+    if session_is_fresh:
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
             session_id=req.session_id,
@@ -2199,10 +2180,52 @@ async def chat_message(req: ChatRequest):
             )
         except Exception as av_err:
             logger.warning(f"Availability check failed (non-fatal): {av_err}")
-    user_text_for_llm = (
-        (availability_prefix + "\n\n---\nGuest message:\n" + req.message)
-        if availability_prefix else req.message
-    )
+
+    # Build KNOWN_INFO block fresh each turn from the latest lead snapshot.
+    known_lines = []
+    if existing_lead:
+        for key, label in (
+            ("guest_name", "Name"), ("phone", "Phone"), ("email", "Email"),
+            ("origin_city", "Origin city"), ("reason", "Reason"),
+            ("dates", "Dates"), ("guests_count", "Guests"),
+        ):
+            val = existing_lead.get(key)
+            if val not in (None, "", 0):
+                known_lines.append(f"- {label}: {val}")
+    known_info_block = (
+        "[KNOWN_INFO — do NOT ask these again]\n" + "\n".join(known_lines)
+    ) if known_lines else ""
+
+    # On cache miss (backend restart / first message / prompt change), replay the
+    # persisted conversation history so the LLM can continue coherently without
+    # re-greeting or forgetting what's been discussed.
+    history_prefix = ""
+    if session_is_fresh:
+        conv = await db.chat_conversations.find_one(
+            {"session_id": req.session_id},
+            {"_id": 0, "messages": {"$slice": -20}}  # last 20 messages only
+        )
+        prior = (conv or {}).get("messages") or []
+        # Exclude the just-pushed user message (same content as req.message) to avoid duplication
+        if prior and prior[-1].get("role") == "user" and prior[-1].get("content") == req.message:
+            prior = prior[:-1]
+        if prior:
+            lines = ["[PREVIOUS CONVERSATION — for your memory only, do not repeat it back]"]
+            for m in prior:
+                role = "Guest" if m.get("role") == "user" else "You"
+                text = (m.get("content") or "").strip().replace("\n", " ")
+                if len(text) > 500:
+                    text = text[:500] + "…"
+                lines.append(f"{role}: {text}")
+            history_prefix = "\n".join(lines)
+
+    today_line = f"[TODAY: {datetime.now(timezone.utc).date().isoformat()}]"
+
+    parts = [p for p in (history_prefix, today_line, known_info_block, availability_prefix) if p]
+    if parts:
+        user_text_for_llm = "\n\n".join(parts) + "\n\n---\nGuest message:\n" + req.message
+    else:
+        user_text_for_llm = req.message
 
     try:
         reply = await chat.send_message(UserMessage(text=user_text_for_llm))
