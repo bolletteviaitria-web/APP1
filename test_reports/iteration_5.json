@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend E2E for iteration 6: booking shortcut URL, PropertyDetailPage calendar dark/light green range, offline payments (cash + bank), Admin Pagamenti tab, Lead Chat 'Doc' column. One CRITICAL bug found and fixed in BookingShortcut.js (wrong calculate-price endpoint). All other flows pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "BookingShortcut",
+        "issue": "FIXED by testing agent. /app/frontend/src/pages/BookingShortcut.js was calling POST /api/properties/{property.id}/calculate-price (404 Not Found). Backend exposes POST /api/properties/calculate-price expecting property_id in body. Result: every shortcut URL hit the catch branch, fired 'Impossibile trovare la casa o calcolare il prezzo' toast and redirected guest to /properties — feature was 100% broken before fix. Patched to call the correct endpoint with property_id in payload.",
+        "selector": "route /prenota/:slug",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_5.json"],
+  "action_items": [
+    "Verify the BookingShortcut.js fix on the next iteration (already applied by test agent: posts to /api/properties/calculate-price with property_id in body).",
+    "Optional: align dark-green token with the spec hsl(145 55% 28%). Tailwind currently emits green-800 (rgb 22,101,52 ≈ hsl 142 64% 24%) on the range edges. Visually correct (dark green) but not the exact requested hue.",
+    "Optional: BookingShortcut could surface a more descriptive error if the underlying API call fails (e.g. show backend message instead of generic toast)."
+  ],
+  "critical_code_review_comments": [
+    "BookingShortcut.js — endpoint URL bug was a copy-paste mistake; it doesn't match how PropertyDetailPage.js (line 84) calls the same backend route (which is correct). Add a small unit / e2e test that hits /prenota/villa-smeraldo to prevent regression.",
+    "BookingPage.js — payment radio block hides itself when only one method is enabled (sum > 1 check). Edge: if admin disables ALL methods, paymentMethod stays 'stripe' default and submit silently posts to Stripe even though admin wanted no online — minor UX edge to consider.",
+    "AdminDashboard.js Pagamenti tab — uses PUT /api/admin/site-settings (problem statement says POST; backend supports the PUT used by the UI, so it works). Consistent.",
+    "PropertyDetailPage.js calendar — dark-green endpoints (green-700/800, ~rgb(21,128,61) / (22,101,52)) and light-green middle (green-200) verified visually and via computed style introspection. Range coloring fully working, no TDZ regression from previous iteration.",
+    "BookingSuccessPage offline branch correctly skips polling and renders IBAN block with reference PREN-{first 8 chars} as designed."
+  ],
+  "updated_files": ["/app/frontend/src/pages/BookingShortcut.js"],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100% after the BookingShortcut endpoint fix (7/7 user flows pass)"},
+  "test_credentials": "admin@terracitoappartments.com / admin123",
+  "seed_data_creation": "Created 2 test bookings on villa-smeraldo: cash 2026-07-05→07-08 (id 719bc238...), bank_transfer 2026-10-12→10-16 (id ff0907f6...). Plus a curl-driven bank_transfer 2026-09-15→09-18 (id ea200095...). Site settings updated: accept_cash=true, accept_bank_transfer=true, IBAN=IT60X0542811101000000123456 (Terracito Srl / Banca Test). Main agent may want to delete these test bookings after verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 3 features (shortcut, calendar dark-green range, offline payments + Admin Pagamenti tab) verified working after the BookingShortcut endpoint fix. Lead Chat 'Doc' column header confirmed present in admin table headers list. Backend was NOT re-tested this iteration because request was frontend-only and no backend code was touched.",
+  "rca of the issue": "BookingShortcut.js used /api/properties/{id}/calculate-price (resource-style URL with id in path), but the FastAPI route is defined as POST /api/properties/calculate-price with PriceCalculation body containing property_id. The misrouted POST returned 404 Not Found, the try/catch surfaced a generic toast, and useEffect navigated the user to /properties — making the shortcut feature unusable. Fix: call the existing canonical route with property_id in the JSON body, matching PropertyDetailPage.js. Reproduction (pre-fix): open /prenota/villa-smeraldo?checkin=2026-07-05&checkout=2026-07-08&guests=4 → page bounces to /properties with red toast. Post-fix: BookingPage renders with prefilled summary (3 notti, 4 ospiti, €2280)."
+}

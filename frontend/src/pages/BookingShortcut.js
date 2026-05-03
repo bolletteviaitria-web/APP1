@@ -49,7 +49,8 @@ export const BookingShortcut = () => {
         const to = parseISO(checkout);
         const nights = Math.max(1, differenceInDays(to, from));
 
-        const priceRes = await axios.post(`${API}/properties/${property.id}/calculate-price`, {
+        const priceRes = await axios.post(`${API}/properties/calculate-price`, {
+          property_id: property.id,
           check_in: checkin,
           check_out: checkout,
           guests,
