@@ -1,3 +1,4 @@
+import { warn } from '@/lib/logger';
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -62,7 +63,7 @@ export const BookingPage = () => {
         localStorage.setItem('terracito.last_booking_id', bookingId);
       } catch (storageErr) {
         // Storage may be disabled (private mode, quota, SecurityError). Non-blocking.
-        console.warn('Could not persist booking id locally:', storageErr?.message || storageErr);
+        warn('Could not persist booking id locally:', storageErr?.message || storageErr);
       }
 
       // Create Stripe checkout session
@@ -298,7 +299,7 @@ export const BookingSuccessPage = () => {
       const stored = localStorage.getItem('terracito.last_booking_id');
       if (stored) setBookingId(stored);
     } catch (storageErr) {
-      console.warn('Could not read booking id from localStorage:', storageErr?.message || storageErr);
+      warn('Could not read booking id from localStorage:', storageErr?.message || storageErr);
     }
     if (sessionId) {
       pollPaymentStatus();

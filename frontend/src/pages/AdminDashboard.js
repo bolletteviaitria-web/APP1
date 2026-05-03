@@ -620,7 +620,10 @@ export const AdminDashboard = () => {
                           </TableCell>
                           <TableCell>
                             <Badge variant={property.is_active ? 'default' : 'secondary'}>
-                              {property.is_active ? (lang === 'it' ? 'Attivo' : 'Active') : (lang === 'it' ? 'Inattivo' : 'Inactive')}
+                              {(() => {
+                                if (property.is_active) return lang === 'it' ? 'Attivo' : 'Active';
+                                return lang === 'it' ? 'Inattivo' : 'Inactive';
+                              })()}
                             </Badge>
                           </TableCell>
                           <TableCell>

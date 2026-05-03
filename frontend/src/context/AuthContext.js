@@ -1,3 +1,4 @@
+import { warn } from '@/lib/logger';
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 
@@ -14,7 +15,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
-    try { localStorage.removeItem('token'); } catch (e) { console.warn('logout: storage error', e); }
+    try { localStorage.removeItem('token'); } catch (e) { warn('logout: storage error', e); }
     setToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
@@ -25,7 +26,7 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
     } catch (error) {
-      console.warn('Auth: token invalid or expired, logging out');
+      warn('Auth: token invalid or expired, logging out');
       logout();
     } finally {
       setLoading(false);
@@ -44,7 +45,7 @@ export const AuthProvider = ({ children }) => {
   const login = useCallback(async (email, password) => {
     const response = await axios.post(`${API}/auth/login`, { email, password });
     const { access_token, user: userData } = response.data;
-    try { localStorage.setItem('token', access_token); } catch (e) { console.warn('login: storage error', e); }
+    try { localStorage.setItem('token', access_token); } catch (e) { warn('login: storage error', e); }
     setToken(access_token);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
@@ -54,7 +55,7 @@ export const AuthProvider = ({ children }) => {
   const register = useCallback(async (email, password, full_name, phone) => {
     const response = await axios.post(`${API}/auth/register`, { email, password, full_name, phone });
     const { access_token, user: userData } = response.data;
-    try { localStorage.setItem('token', access_token); } catch (e) { console.warn('register: storage error', e); }
+    try { localStorage.setItem('token', access_token); } catch (e) { warn('register: storage error', e); }
     setToken(access_token);
     setUser(userData);
     axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;

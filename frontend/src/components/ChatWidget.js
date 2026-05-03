@@ -1,3 +1,4 @@
+import { warn } from '@/lib/logger';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -34,7 +35,7 @@ const getSessionId = () => {
     if (!id) { id = newId(); localStorage.setItem(SESSION_KEY, id); }
     return id;
   } catch (e) {
-    console.warn('ChatWidget: localStorage unavailable for session id', e);
+    warn('ChatWidget: localStorage unavailable for session id', e);
     return newId();
   }
 };
@@ -44,7 +45,7 @@ const getInitialHistory = () => {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {
-    console.warn('ChatWidget: failed to read cached history', e);
+    warn('ChatWidget: failed to read cached history', e);
   }
   return [];
 };
@@ -59,7 +60,7 @@ export const ChatWidget = () => {
   const [sending, setSending] = useState(false);
   const [bookingCode, setBookingCode] = useState(() => {
     try { return localStorage.getItem(BOOKING_KEY) || ''; } catch (e) {
-      console.warn('ChatWidget: failed to read booking code', e);
+      warn('ChatWidget: failed to read booking code', e);
       return '';
     }
   });
@@ -83,7 +84,7 @@ export const ChatWidget = () => {
   // Persist conversation locally
   useEffect(() => {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(messages.slice(-50))); } catch (e) {
-      console.warn('ChatWidget: failed to persist history', e);
+      warn('ChatWidget: failed to persist history', e);
     }
   }, [messages]);
 
@@ -93,7 +94,7 @@ export const ChatWidget = () => {
       if (bookingCode) localStorage.setItem(BOOKING_KEY, bookingCode);
       else localStorage.removeItem(BOOKING_KEY);
     } catch (e) {
-      console.warn('ChatWidget: failed to persist booking code', e);
+      warn('ChatWidget: failed to persist booking code', e);
     }
   }, [bookingCode]);
 
@@ -166,7 +167,7 @@ export const ChatWidget = () => {
       localStorage.removeItem(HISTORY_KEY);
       localStorage.setItem(SESSION_KEY, newId()); // fresh session id
     } catch (e) {
-      console.warn('ChatWidget: failed to reset conversation storage', e);
+      warn('ChatWidget: failed to reset conversation storage', e);
     }
     window.location.reload(); // simplest way to refresh sessionId
   };
@@ -176,14 +177,14 @@ export const ChatWidget = () => {
   useEffect(() => {
     let dismissed = false;
     try { dismissed = sessionStorage.getItem('terracito.chat_tip_dismissed') === '1'; } catch (e) {
-      console.warn('ChatWidget: failed to read tooltip flag', e);
+      warn('ChatWidget: failed to read tooltip flag', e);
     }
     if (dismissed || open || messages.length > 0) return;
     const t1 = setTimeout(() => setShowTip(true), 2500);
     const t2 = setTimeout(() => {
       setShowTip(false);
       try { sessionStorage.setItem('terracito.chat_tip_dismissed', '1'); } catch (e) {
-        console.warn('ChatWidget: failed to dismiss tooltip flag', e);
+        warn('ChatWidget: failed to dismiss tooltip flag', e);
       }
     }, 12000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
@@ -192,7 +193,7 @@ export const ChatWidget = () => {
   const handleLauncherClick = () => {
     setShowTip(false);
     try { sessionStorage.setItem('terracito.chat_tip_dismissed', '1'); } catch (e) {
-      console.warn('ChatWidget: failed to persist tooltip dismiss', e);
+      warn('ChatWidget: failed to persist tooltip dismiss', e);
     }
     setOpen((o) => !o);
   };
