@@ -132,6 +132,37 @@ export const AdminDashboard = () => {
     }
   };
 
+  const deleteConversation = async (sessionId) => {
+    if (!window.confirm(lang === 'it'
+      ? 'Eliminare questa conversazione? L\u2019azione \u00e8 irreversibile. Il lead associato verr\u00e0 rimosso ma i documenti caricati restano.'
+      : 'Delete this conversation? Associated lead will be removed; uploaded documents stay.')) return;
+    try {
+      await axios.delete(`${API}/admin/chat/conversations/${sessionId}`);
+      setConversations((prev) => prev.filter((c) => c.session_id !== sessionId));
+      if (activeConversation?.session_id === sessionId) setActiveConversation(null);
+      toast.success(lang === 'it' ? 'Conversazione eliminata' : 'Conversation deleted');
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
+  const deleteAllConversations = async () => {
+    if (!window.confirm(lang === 'it'
+      ? 'Eliminare TUTTE le conversazioni e i lead? Questa azione non pu\u00f2 essere annullata.'
+      : 'Delete ALL conversations and leads? This cannot be undone.')) return;
+    try {
+      const res = await axios.delete(`${API}/admin/chat/conversations`);
+      setConversations([]);
+      setLeads([]);
+      setActiveConversation(null);
+      toast.success(lang === 'it'
+        ? `Eliminate ${res.data?.deleted_conversations || 0} conversazioni`
+        : `Deleted ${res.data?.deleted_conversations || 0} conversations`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('common.error'));
+    }
+  };
+
   const updateLeadStatus = async (sessionId, status) => {
     try {
       await axios.patch(`${API}/admin/chat/leads/${sessionId}`, { status });
@@ -1064,9 +1095,23 @@ export const AdminDashboard = () => {
                       : 'All conversations guests have had with the website\u2019s virtual assistant.'}
                   </p>
                 </div>
-                <Button onClick={fetchData} variant="ghost" size="icon">
-                  <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={fetchData} variant="ghost" size="icon">
+                    <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+                  {conversations.length > 0 && (
+                    <Button
+                      onClick={deleteAllConversations}
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                      data-testid="delete-all-conversations-btn"
+                    >
+                      <Trash2 className="w-4 h-4 mr-1.5" />
+                      {lang === 'it' ? 'Elimina tutte' : 'Delete all'}
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1080,10 +1125,10 @@ export const AdminDashboard = () => {
                       const last = (c.messages && c.messages[0]) || {};
                       const isActive = activeConversation?.session_id === c.session_id;
                       return (
-                        <li key={c.session_id}>
+                        <li key={c.session_id} className="relative group">
                           <button
                             onClick={() => openConversation(c.session_id)}
-                            className={`w-full text-left p-3 hover:bg-muted/60 transition-colors ${isActive ? 'bg-muted' : ''}`}
+                            className={`w-full text-left p-3 pr-10 hover:bg-muted/60 transition-colors ${isActive ? 'bg-muted' : ''}`}
                             data-testid={`chat-session-${c.session_id}`}
                           >
                             <div className="flex items-center justify-between gap-2 mb-1">
@@ -1112,6 +1157,15 @@ export const AdminDashboard = () => {
                                 </Badge>
                               )}
                             </div>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteConversation(c.session_id); }}
+                            title={lang === 'it' ? 'Elimina conversazione' : 'Delete conversation'}
+                            aria-label={lang === 'it' ? 'Elimina conversazione' : 'Delete conversation'}
+                            className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                            data-testid={`delete-conversation-${c.session_id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </li>
                       );
@@ -1144,6 +1198,16 @@ export const AdminDashboard = () => {
                             {activeConversation.last_language && ` · ${activeConversation.last_language.toUpperCase()}`}
                           </p>
                         </div>
+                        <Button
+                          onClick={() => deleteConversation(activeConversation.session_id)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:bg-destructive/10"
+                          data-testid="delete-active-conversation-btn"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1.5" />
+                          {lang === 'it' ? 'Elimina' : 'Delete'}
+                        </Button>
                       </div>
                       {(activeConversation.messages || []).map((m, idx) => (
                         <div key={m.ts ? `${m.ts}-${m.role}` : `msg-${idx}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
