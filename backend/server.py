@@ -34,6 +34,18 @@ JWT_EXPIRATION_HOURS = 24
 # Stripe Configuration
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', 'sk_test_emergent')
 
+# Resend (transactional email) Configuration
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '').strip()
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev').strip()
+SENDER_NAME = os.environ.get('SENDER_NAME', 'Appartamento Reggio Calabria').strip()
+REPLY_TO_EMAIL = os.environ.get('REPLY_TO_EMAIL', '').strip() or None
+try:
+    import resend as _resend
+    if RESEND_API_KEY:
+        _resend.api_key = RESEND_API_KEY
+except ImportError:
+    _resend = None
+
 # Object Storage Configuration
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
@@ -500,7 +512,10 @@ async def calculate_price(data: PriceCalculation):
         extras_total += pricing["extra_guest_fee"] * (data.guests - 2) * nights
     
     cleaning_fee = pricing.get("cleaning_fee", 0)
-    security_deposit = pricing.get("security_deposit", 0)
+    raw_security_deposit = pricing.get("security_deposit", 0) or 0
+    # Security deposit is applied ONLY for stays strictly longer than 7 nights.
+    # Short stays (1–7 nights) are not subject to the cauzione.
+    security_deposit = raw_security_deposit if nights > 7 else 0
     subtotal = base_total + seasonal_adjustment + extras_total + cleaning_fee
     total = subtotal + security_deposit
     
@@ -615,7 +630,116 @@ async def update_booking_status(
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Booking not found")
+    if status == "confirmed":
+        try:
+            await _send_booking_confirmation_email(booking_id)
+        except Exception as e:
+            logger.warning(f"Confirmation email failed (non-fatal) for {booking_id}: {e}")
     return {"message": f"Booking status updated to {status}"}
+
+
+# ============ EMAIL HELPERS ============
+
+def _render_template(tpl: str, ctx: Dict[str, Any]) -> str:
+    """Tiny mustache-like renderer for {{key}} placeholders. No logic, no nesting."""
+    out = tpl or ""
+    for k, v in ctx.items():
+        out = out.replace("{{" + k + "}}", "" if v is None else str(v))
+    return out
+
+
+async def _send_booking_confirmation_email(booking_id: str) -> bool:
+    """Send the confirmation email to the guest. Returns True if dispatched.
+    Pulls subject/body from site_settings (admin-editable) with sane defaults."""
+    if not RESEND_API_KEY or _resend is None:
+        logger.info("Resend not configured (RESEND_API_KEY empty) — skipping confirmation email")
+        return False
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        return False
+    if not booking.get("guest_email"):
+        return False
+    settings = await db.site_settings.find_one({"id": "global"}, {"_id": 0}) or {}
+    settings = {**SITE_SETTINGS_DEFAULT, **settings}
+    if settings.get("confirmation_email_enabled") is False:
+        logger.info("Confirmation email disabled in site_settings — skipping")
+        return False
+
+    prop = await db.properties.find_one({"id": booking["property_id"]}, {"_id": 0}) or {}
+    tr_it = (prop.get("translations") or {}).get("it", {}) or {}
+    title = tr_it.get("title") or prop.get("slug") or "la nostra casa"
+    loc = prop.get("location") or {}
+    address = ", ".join(filter(None, [
+        loc.get("address"), loc.get("city"), loc.get("region"), loc.get("country")
+    ])) or settings.get("confirmation_email_contact_address") or "—"
+    wm = prop.get("welcome_manual") or {}
+
+    nights = max(1, (
+        datetime.fromisoformat(booking["check_out"]).date()
+        - datetime.fromisoformat(booking["check_in"]).date()
+    ).days)
+    deposit_amount = (prop.get("pricing") or {}).get("security_deposit", 0) if nights > 7 else 0
+    deposit_line = (
+        f"• Cauzione (rimborsabile a fine soggiorno): €{deposit_amount}"
+        if deposit_amount else "• Cauzione: non richiesta per questo soggiorno"
+    )
+    payment_method_label = {
+        "stripe": "Carta di credito (online)",
+        "cash": "Contanti al check-in",
+        "bank_transfer": "Bonifico bancario (IBAN)",
+        "iban": "Bonifico bancario (IBAN)",
+    }.get(booking.get("payment_method") or "stripe", booking.get("payment_method") or "—")
+
+    ctx = {
+        "guest_name": booking.get("guest_name") or "ospite",
+        "property_name": title,
+        "property_address": address,
+        "check_in": booking.get("check_in", ""),
+        "check_out": booking.get("check_out", ""),
+        "check_in_time": wm.get("check_in_time") or "15:00",
+        "check_out_time": wm.get("check_out_time") or "11:00",
+        "nights": nights,
+        "guests": booking.get("guests", ""),
+        "total": f"{booking.get('total_price', 0):.2f}",
+        "payment_method": payment_method_label,
+        "deposit_line": deposit_line,
+        "contact_phone": settings.get("confirmation_email_contact_phone") or WHATSAPP_NUMBER,
+        "contact_email": settings.get("confirmation_email_contact_email") or REPLY_TO_EMAIL or "",
+    }
+    subject = _render_template(settings.get("confirmation_email_subject") or DEFAULT_CONFIRMATION_EMAIL_SUBJECT, ctx)
+    body_text = _render_template(settings.get("confirmation_email_body") or DEFAULT_CONFIRMATION_EMAIL_BODY, ctx)
+    # Convert plain-text body to a basic HTML wrapper (preserve line breaks)
+    html_body = (
+        "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
+        "font-size:15px;line-height:1.55;color:#1E232B;max-width:580px;margin:0 auto;\">"
+        + body_text.replace("\n", "<br/>")
+        + "</div>"
+    )
+
+    from_addr = f"{SENDER_NAME} <{SENDER_EMAIL}>" if SENDER_NAME else SENDER_EMAIL
+    params = {
+        "from": from_addr,
+        "to": [booking["guest_email"]],
+        "subject": subject,
+        "html": html_body,
+    }
+    if REPLY_TO_EMAIL:
+        params["reply_to"] = REPLY_TO_EMAIL
+    try:
+        import asyncio as _aio
+        result = await _aio.to_thread(_resend.Emails.send, params)
+        logger.info(f"Confirmation email sent to {booking['guest_email']} for booking {booking_id}: id={(result or {}).get('id')}")
+        await db.bookings.update_one(
+            {"id": booking_id},
+            {"$set": {
+                "confirmation_email_sent_at": datetime.now(timezone.utc).isoformat(),
+                "confirmation_email_id": (result or {}).get("id"),
+            }}
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Resend send failed for booking {booking_id}: {e}")
+        return False
 
 # ============ AVAILABILITY ============
 
@@ -745,14 +869,37 @@ async def get_payment_status(session_id: str, request: Request):
                 {"session_id": session_id},
                 {"$set": {"status": "completed", "payment_status": "paid"}}
             )
-            
-            payment_type = transaction.get("payment_type", "full")
-            new_payment_status = "paid" if payment_type == "full" else "partial"
-            
-            await db.bookings.update_one(
-                {"id": transaction["booking_id"]},
-                {"$set": {"payment_status": new_payment_status, "status": "confirmed"}}
-            )
+
+            # Branch 1 — payment-link transaction (no booking attached)
+            if transaction.get("kind") == "payment_link" or transaction.get("payment_link_token"):
+                token = transaction.get("payment_link_token")
+                pl = await db.payment_links.find_one({"token": token}, {"_id": 0})
+                if pl and pl.get("status") != "paid":
+                    await db.payment_links.update_one(
+                        {"token": token},
+                        {"$set": {
+                            "status": "paid",
+                            "paid_at": datetime.now(timezone.utc).isoformat(),
+                        }}
+                    )
+                    try:
+                        await _notify_admin_payment_link_paid(
+                            token, float(pl.get("amount") or 0), pl.get("description", "")
+                        )
+                    except Exception as e:
+                        logger.warning(f"Admin notify (poll) failed: {e}")
+            # Branch 2 — booking transaction
+            elif transaction.get("booking_id"):
+                payment_type = transaction.get("payment_type", "full")
+                new_payment_status = "paid" if payment_type == "full" else "partial"
+                await db.bookings.update_one(
+                    {"id": transaction["booking_id"]},
+                    {"$set": {"payment_status": new_payment_status, "status": "confirmed"}}
+                )
+                try:
+                    await _send_booking_confirmation_email(transaction["booking_id"])
+                except Exception as e:
+                    logger.warning(f"Confirmation email (poll) failed: {e}")
     
     return {
         "status": status.status,
@@ -781,12 +928,36 @@ async def stripe_webhook(request: Request):
             
             transaction = await db.payment_transactions.find_one({"session_id": event.session_id}, {"_id": 0})
             if transaction:
-                payment_type = transaction.get("payment_type", "full")
-                new_status = "paid" if payment_type == "full" else "partial"
-                await db.bookings.update_one(
-                    {"id": transaction["booking_id"]},
-                    {"$set": {"payment_status": new_status, "status": "confirmed"}}
-                )
+                # Branch 1 — payment-link transaction
+                if transaction.get("kind") == "payment_link" or transaction.get("payment_link_token"):
+                    token = transaction.get("payment_link_token")
+                    pl = await db.payment_links.find_one({"token": token}, {"_id": 0})
+                    if pl and pl.get("status") != "paid":
+                        await db.payment_links.update_one(
+                            {"token": token},
+                            {"$set": {
+                                "status": "paid",
+                                "paid_at": datetime.now(timezone.utc).isoformat(),
+                            }}
+                        )
+                        try:
+                            await _notify_admin_payment_link_paid(
+                                token, float(pl.get("amount") or 0), pl.get("description", "")
+                            )
+                        except Exception as e:
+                            logger.warning(f"Admin notify (webhook) failed: {e}")
+                # Branch 2 — booking transaction
+                elif transaction.get("booking_id"):
+                    payment_type = transaction.get("payment_type", "full")
+                    new_status = "paid" if payment_type == "full" else "partial"
+                    await db.bookings.update_one(
+                        {"id": transaction["booking_id"]},
+                        {"$set": {"payment_status": new_status, "status": "confirmed"}}
+                    )
+                    try:
+                        await _send_booking_confirmation_email(transaction["booking_id"])
+                    except Exception as e:
+                        logger.warning(f"Confirmation email (webhook) failed: {e}")
         
         return {"status": "success"}
     except Exception as e:
@@ -1963,7 +2134,14 @@ async def _build_system_prompt(
         "che l'ospite ha chiesto (per es. propone il 23-25 ma tu proponi il 20-23), NON dare un prezzo specifico: "
         "dì \"aspetta un attimo che controllo il prezzo esatto\" oppure mandagli direttamente il link "
         "/prenota/<slug>?checkin=...&checkout=...&guests=N e di' che il totale lo vedrà nella pagina. "
-        "Mai inventare cifre, mai arrotondare, mai stimare. Se PRICE_RESULT non c'è, non dare numeri."
+        "Mai inventare cifre, mai arrotondare, mai stimare. Se PRICE_RESULT non c'è, non dare numeri.",
+        "**DISPONIBILITÀ — REGOLA ASSOLUTA**: se l'ospite chiede disponibilità in modo VAGO (\"a settembre\", "
+        "\"d'estate\", \"per le vacanze\", \"un weekend\", \"a Natale\", \"il mese prossimo\") SENZA darti "
+        "check-in e check-out specifici, NON dire mai che è occupato/libero — sarebbe inventare. "
+        "Rispondi SOLO chiedendo le date precise: \"Dimmi le date esatte (giorno e mese di arrivo e partenza) "
+        "e te lo dico al volo!\". Puoi dire occupato o libero SOLO se ricevi il blocco "
+        "AVAILABILITY_RESULT — SERVER-VERIFIED in questo turno, oppure se le date richieste sono presenti "
+        "ESATTAMENTE in BOOKING_CALENDAR. In caso di dubbio, chiedi conferma. MAI improvvisare."
     ]
     if language_hint in {"it", "en"}:
         rules.append(f"Lingua UI dell'ospite: '{language_hint}', parti da quella.")
@@ -2480,6 +2658,45 @@ class SiteSettingsUpdate(BaseModel):
     iban_holder: Optional[str] = None
     iban_bank: Optional[str] = None
     iban_notes: Optional[str] = None
+    # Confirmation email (admin-editable)
+    confirmation_email_enabled: Optional[bool] = None
+    confirmation_email_subject: Optional[str] = None
+    confirmation_email_body: Optional[str] = None
+    confirmation_email_contact_phone: Optional[str] = None
+    confirmation_email_contact_email: Optional[str] = None
+    confirmation_email_contact_address: Optional[str] = None
+
+
+DEFAULT_CONFIRMATION_EMAIL_SUBJECT = "Prenotazione confermata — {{property_name}} ({{check_in}} → {{check_out}})"
+DEFAULT_CONFIRMATION_EMAIL_BODY = """Ciao {{guest_name}},
+
+la tua prenotazione presso {{property_name}} è stata confermata. ✅
+
+📅 Riepilogo soggiorno
+• Check-in: {{check_in}} (dalle {{check_in_time}})
+• Check-out: {{check_out}} (entro le {{check_out_time}})
+• Notti: {{nights}}
+• Ospiti: {{guests}}
+
+💶 Riepilogo prezzo
+• Totale soggiorno: €{{total}}
+• Metodo di pagamento: {{payment_method}}
+{{deposit_line}}
+
+📍 Indirizzo
+{{property_address}}
+
+🆘 Contatti della struttura
+• Telefono / WhatsApp: {{contact_phone}}
+• Email: {{contact_email}}
+
+📄 Documento d'identità
+Ti ricordiamo che, come previsto dalla normativa italiana, prima del check-in dovrai caricare un documento d'identità valido (carta d'identità o passaporto). Lo puoi fare dalla pagina di conferma della tua prenotazione.
+
+Se hai qualsiasi domanda o necessità prima dell'arrivo, rispondi pure a questa email — siamo qui per aiutarti.
+
+A presto!
+Appartamento Reggio Calabria"""
 
 
 SITE_SETTINGS_DEFAULT = {
@@ -2490,6 +2707,12 @@ SITE_SETTINGS_DEFAULT = {
     "iban_holder": "",
     "iban_bank": "",
     "iban_notes": "",
+    "confirmation_email_enabled": True,
+    "confirmation_email_subject": DEFAULT_CONFIRMATION_EMAIL_SUBJECT,
+    "confirmation_email_body": DEFAULT_CONFIRMATION_EMAIL_BODY,
+    "confirmation_email_contact_phone": "",
+    "confirmation_email_contact_email": "",
+    "confirmation_email_contact_address": "",
 }
 
 
@@ -2531,6 +2754,291 @@ async def get_site_settings_public():
         "iban_bank": merged.get("iban_bank", "") if merged.get("accept_bank_transfer") else "",
         "iban_notes": merged.get("iban_notes", "") if merged.get("accept_bank_transfer") else "",
     }
+
+
+@api_router.post("/admin/email/test")
+async def send_test_confirmation_email(
+    body: Dict[str, Any] = None,
+    user: dict = Depends(require_admin),
+):
+    """Send a test confirmation email to the admin (or to a chosen recipient)
+    so they can preview the template before customers receive it. Body: {to, booking_id?}"""
+    body = body or {}
+    to_addr = (body.get("to") or user.get("email") or "").strip()
+    if not to_addr:
+        raise HTTPException(status_code=400, detail="Missing recipient email")
+    if not RESEND_API_KEY or _resend is None:
+        raise HTTPException(status_code=400, detail="Resend non configurato (RESEND_API_KEY mancante)")
+
+    # Use a real booking if booking_id provided, else build a fake context for preview.
+    booking_id = body.get("booking_id")
+    if booking_id:
+        booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking not found")
+        # Override guest_email so the test goes to the admin instead of the real guest
+        await db.bookings.update_one({"id": booking_id}, {"$set": {"guest_email": to_addr}})
+        ok = await _send_booking_confirmation_email(booking_id)
+        return {"sent": ok}
+    # No booking_id → render with mock context
+    settings = await db.site_settings.find_one({"id": "global"}, {"_id": 0}) or {}
+    settings = {**SITE_SETTINGS_DEFAULT, **settings}
+    mock_ctx = {
+        "guest_name": "Mario Rossi",
+        "property_name": "Appartamento Reggio Calabria",
+        "property_address": "Via Galvani, Reggio Calabria, Italia",
+        "check_in": "2026-07-10",
+        "check_out": "2026-07-13",
+        "check_in_time": "15:00",
+        "check_out_time": "11:00",
+        "nights": 3,
+        "guests": 2,
+        "total": "450.00",
+        "payment_method": "Carta di credito (online)",
+        "deposit_line": "• Cauzione: non richiesta per questo soggiorno",
+        "contact_phone": settings.get("confirmation_email_contact_phone") or WHATSAPP_NUMBER,
+        "contact_email": settings.get("confirmation_email_contact_email") or REPLY_TO_EMAIL or "",
+    }
+    subject = "[ANTEPRIMA] " + _render_template(settings.get("confirmation_email_subject") or DEFAULT_CONFIRMATION_EMAIL_SUBJECT, mock_ctx)
+    body_text = _render_template(settings.get("confirmation_email_body") or DEFAULT_CONFIRMATION_EMAIL_BODY, mock_ctx)
+    html_body = (
+        "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
+        "font-size:15px;line-height:1.55;color:#1E232B;max-width:580px;margin:0 auto;\">"
+        + body_text.replace("\n", "<br/>")
+        + "</div>"
+    )
+    from_addr = f"{SENDER_NAME} <{SENDER_EMAIL}>" if SENDER_NAME else SENDER_EMAIL
+    params = {"from": from_addr, "to": [to_addr], "subject": subject, "html": html_body}
+    if REPLY_TO_EMAIL:
+        params["reply_to"] = REPLY_TO_EMAIL
+    try:
+        import asyncio as _aio
+        result = await _aio.to_thread(_resend.Emails.send, params)
+        return {"sent": True, "id": (result or {}).get("id")}
+    except Exception as e:
+        logger.error(f"Resend test send failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ PAYMENT LINKS (admin → customer card payment) ============
+
+class PaymentLinkCreate(BaseModel):
+    amount: float                              # EUR
+    description: str                           # what the customer is paying for
+    customer_name: Optional[str] = None
+    customer_email: Optional[EmailStr] = None
+    check_in: Optional[str] = None             # YYYY-MM-DD (optional context)
+    check_out: Optional[str] = None
+    location: Optional[str] = None             # free text e.g. "Reggio Calabria"
+    notes: Optional[str] = None
+    expires_in_days: Optional[int] = 30
+
+
+class PaymentLinkResponse(BaseModel):
+    id: str
+    token: str
+    amount: float
+    description: str
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    check_in: Optional[str] = None
+    check_out: Optional[str] = None
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    status: str                                # pending | paid | expired | cancelled
+    public_url: str
+    created_at: str
+    expires_at: Optional[str] = None
+    paid_at: Optional[str] = None
+    stripe_session_id: Optional[str] = None
+
+
+def _payment_link_public_url(request: Request, token: str) -> str:
+    origin = request.headers.get("origin")
+    if origin:
+        return f"{origin}/pay/{token}"
+    return f"{str(request.base_url).rstrip('/')}/pay/{token}"
+
+
+@api_router.post("/admin/payment-links", response_model=PaymentLinkResponse)
+async def create_payment_link(
+    body: PaymentLinkCreate,
+    request: Request,
+    user: dict = Depends(require_admin),
+):
+    if body.amount is None or body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Importo non valido")
+    if not (body.description or "").strip():
+        raise HTTPException(status_code=400, detail="Descrizione obbligatoria")
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=int(body.expires_in_days or 30))
+    token = uuid.uuid4().hex[:16]
+    doc = {
+        "id": str(uuid.uuid4()),
+        "token": token,
+        "amount": float(body.amount),
+        "description": body.description.strip(),
+        "customer_name": (body.customer_name or "").strip() or None,
+        "customer_email": (body.customer_email or "").strip() or None,
+        "check_in": body.check_in,
+        "check_out": body.check_out,
+        "location": (body.location or "").strip() or None,
+        "notes": (body.notes or "").strip() or None,
+        "status": "pending",
+        "created_at": now.isoformat(),
+        "expires_at": expires.isoformat(),
+        "created_by": user.get("email"),
+        "paid_at": None,
+        "stripe_session_id": None,
+    }
+    await db.payment_links.insert_one(doc)
+    public_url = _payment_link_public_url(request, token)
+    return PaymentLinkResponse(public_url=public_url, **{k: doc[k] for k in doc if k != "created_by"})
+
+
+@api_router.get("/admin/payment-links", response_model=List[PaymentLinkResponse])
+async def list_payment_links(request: Request, user: dict = Depends(require_admin)):
+    rows = await db.payment_links.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    base_url = (request.headers.get("origin") or str(request.base_url).rstrip("/"))
+    out = []
+    for r in rows:
+        out.append(PaymentLinkResponse(
+            public_url=f"{base_url}/pay/{r.get('token','')}",
+            **{k: r.get(k) for k in (
+                "id", "token", "amount", "description", "customer_name", "customer_email",
+                "check_in", "check_out", "location", "notes", "status",
+                "created_at", "expires_at", "paid_at", "stripe_session_id"
+            )}
+        ))
+    return out
+
+
+@api_router.delete("/admin/payment-links/{link_id}")
+async def delete_payment_link(link_id: str, user: dict = Depends(require_admin)):
+    res = await db.payment_links.delete_one({"id": link_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Link non trovato")
+    return {"deleted": True}
+
+
+@api_router.get("/payment-links/{token}")
+async def get_payment_link_public(token: str):
+    """Public — used by /pay/:token page to render details before checkout."""
+    doc = await db.payment_links.find_one({"token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Link non trovato")
+    # Mark expired if past expiration and still pending
+    if doc.get("status") == "pending" and doc.get("expires_at"):
+        try:
+            if datetime.fromisoformat(doc["expires_at"]) < datetime.now(timezone.utc):
+                await db.payment_links.update_one({"token": token}, {"$set": {"status": "expired"}})
+                doc["status"] = "expired"
+        except Exception:
+            pass
+    return {
+        "token": doc.get("token"),
+        "amount": doc.get("amount"),
+        "description": doc.get("description"),
+        "customer_name": doc.get("customer_name"),
+        "customer_email": doc.get("customer_email"),
+        "check_in": doc.get("check_in"),
+        "check_out": doc.get("check_out"),
+        "location": doc.get("location"),
+        "notes": doc.get("notes"),
+        "status": doc.get("status", "pending"),
+        "expires_at": doc.get("expires_at"),
+    }
+
+
+@api_router.post("/payment-links/{token}/checkout")
+async def payment_link_checkout(token: str, request: Request):
+    """Public — generates a Stripe Checkout session for the link."""
+    doc = await db.payment_links.find_one({"token": token}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Link non trovato")
+    if doc.get("status") == "paid":
+        raise HTTPException(status_code=400, detail="Pagamento già completato")
+    if doc.get("status") == "cancelled":
+        raise HTTPException(status_code=400, detail="Link annullato")
+    if doc.get("expires_at") and datetime.fromisoformat(doc["expires_at"]) < datetime.now(timezone.utc):
+        await db.payment_links.update_one({"token": token}, {"$set": {"status": "expired"}})
+        raise HTTPException(status_code=400, detail="Link scaduto")
+
+    host_url = str(request.base_url).rstrip('/')
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
+    origin = request.headers.get("origin", host_url)
+    success_url = f"{origin}/pay/{token}?success=1"
+    cancel_url = f"{origin}/pay/{token}?cancelled=1"
+
+    checkout_request = CheckoutSessionRequest(
+        amount=float(doc["amount"]),
+        currency="eur",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "kind": "payment_link",
+            "payment_link_token": token,
+            "description": (doc.get("description") or "")[:200],
+        }
+    )
+    session = await stripe_checkout.create_checkout_session(checkout_request)
+
+    transaction = {
+        "id": str(uuid.uuid4()),
+        "payment_link_token": token,
+        "session_id": session.session_id,
+        "amount": doc["amount"],
+        "currency": "eur",
+        "kind": "payment_link",
+        "status": "initiated",
+        "payment_status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.payment_transactions.insert_one(transaction)
+    await db.payment_links.update_one(
+        {"token": token},
+        {"$set": {"stripe_session_id": session.session_id}}
+    )
+    return {"checkout_url": session.url, "session_id": session.session_id}
+
+
+async def _notify_admin_payment_link_paid(token: str, amount: float, description: str):
+    """Send confirmation email to the admin when a payment-link is paid."""
+    if not RESEND_API_KEY or _resend is None:
+        return False
+    # Find admin email
+    admin = await db.users.find_one({"role": "admin"}, {"_id": 0, "email": 1})
+    admin_email = (admin or {}).get("email") or REPLY_TO_EMAIL
+    if not admin_email:
+        return False
+    from_addr = f"{SENDER_NAME} <{SENDER_EMAIL}>" if SENDER_NAME else SENDER_EMAIL
+    subject = f"💸 Pagamento ricevuto — €{amount:.2f}"
+    html = (
+        "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;"
+        "line-height:1.55;color:#1E232B;max-width:560px;margin:0 auto;\">"
+        f"<h2 style=\"color:#16A34A;\">Pagamento ricevuto ✅</h2>"
+        f"<p>Stripe ha appena confermato un pagamento del link che hai creato.</p>"
+        f"<table cellpadding=\"6\" style=\"border-collapse:collapse;font-size:14px;\">"
+        f"<tr><td><b>Importo</b></td><td>€{amount:.2f}</td></tr>"
+        f"<tr><td><b>Descrizione</b></td><td>{description}</td></tr>"
+        f"<tr><td><b>Token link</b></td><td>{token}</td></tr>"
+        f"<tr><td><b>Quando</b></td><td>{datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}</td></tr>"
+        f"</table>"
+        "<p style=\"color:#666;font-size:13px;margin-top:24px;\">"
+        "I dettagli completi (nome cliente, ricevuta) sono disponibili sulla dashboard Stripe.</p>"
+        "</div>"
+    )
+    try:
+        import asyncio as _aio
+        await _aio.to_thread(_resend.Emails.send, {
+            "from": from_addr, "to": [admin_email], "subject": subject, "html": html,
+            **({"reply_to": REPLY_TO_EMAIL} if REPLY_TO_EMAIL else {}),
+        })
+        return True
+    except Exception as e:
+        logger.error(f"Admin notification email failed: {e}")
+        return False
 
 
 @api_router.post("/chat/upload-document")

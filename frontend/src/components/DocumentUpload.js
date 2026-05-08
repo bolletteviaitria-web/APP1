@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
-import { Upload, FileText, CheckCircle2, Loader2, Trash2 } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 
@@ -72,16 +72,29 @@ export const DocumentUpload = ({ bookingId }) => {
 
   return (
     <div className="glass p-6 space-y-4 text-left" data-testid="document-upload-card">
+      <div
+        role="alert"
+        className="flex gap-3 border-l-4 border-red-600 bg-red-50 dark:bg-red-950/20 px-4 py-3"
+        data-testid="document-upload-alert"
+      >
+        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" aria-hidden="true" />
+        <div>
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400 uppercase tracking-wide">
+            {lang === 'it' ? 'Importante \u2014 Azione richiesta' : 'Important \u2014 Action required'}
+          </p>
+          <p className="text-sm text-red-800 dark:text-red-300 mt-1 leading-relaxed">
+            {lang === 'it'
+              ? 'Carica un documento valido (carta d\u2019identit\u00e0 o passaporto). \u00c8 obbligatorio per il check-in: senza il documento non potremo consegnarti le chiavi.'
+              : 'Upload a valid ID document (national ID or passport). It is mandatory for check-in: without it we cannot hand you the keys.'}
+          </p>
+        </div>
+      </div>
+
       <div>
         <h3 className="text-lg font-display font-medium flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
           {lang === 'it' ? 'Documenti d\u2019Identità' : 'Identity Documents'}
         </h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          {lang === 'it'
-            ? 'Carica un documento valido (carta d\u2019identità o passaporto). Richiesto per il check-in.'
-            : 'Upload a valid ID document (national ID or passport). Required at check-in.'}
-        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

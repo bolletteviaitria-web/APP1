@@ -3,12 +3,13 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import { PaymentLinkPanel } from '../components/PaymentLinkPanel';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 import {
   LayoutDashboard, Building, Calendar, MessageSquare, Settings,
   Users, Euro, Clock, ArrowUpRight, Check, X, Edit, Trash2, Plus,
-  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home, Bot, Search
+  RefreshCw, ExternalLink, Link2, FileText, Download, Copy, LogOut, Home, Bot, Search, Mail
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -96,10 +97,17 @@ export const AdminDashboard = () => {
   const [savingAiRules, setSavingAiRules] = useState(false);
   const [siteSettings, setSiteSettings] = useState({
     accept_stripe: true, accept_cash: false, accept_bank_transfer: false,
-    iban: '', iban_holder: '', iban_bank: '', iban_notes: ''
+    iban: '', iban_holder: '', iban_bank: '', iban_notes: '',
+    confirmation_email_enabled: true,
+    confirmation_email_subject: '',
+    confirmation_email_body: '',
+    confirmation_email_contact_phone: '',
+    confirmation_email_contact_email: '',
+    confirmation_email_contact_address: '',
   });
   const [siteSettingsLoaded, setSiteSettingsLoaded] = useState(false);
   const [savingSiteSettings, setSavingSiteSettings] = useState(false);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
@@ -467,6 +475,8 @@ export const AdminDashboard = () => {
     { id: 'leads', label: lang === 'it' ? 'Lead Chat' : 'Chat Leads', icon: Users },
     { id: 'ai-settings', label: lang === 'it' ? 'Assistente AI' : 'AI Assistant', icon: Settings },
     { id: 'payments', label: lang === 'it' ? 'Pagamenti' : 'Payments', icon: Euro },
+    { id: 'email', label: lang === 'it' ? 'Email Conferma' : 'Confirmation Email', icon: Mail },
+    { id: 'paylink', label: lang === 'it' ? 'Link Pagamento' : 'Payment Link', icon: ExternalLink },
   ];
 
   return (
@@ -1618,6 +1628,156 @@ export const AdminDashboard = () => {
               </div>
             </div>
           )}
+
+          {/* Email Confirmation Tab */}
+          {activeTab === 'email' && (
+            <div className="space-y-6" data-testid="email-tab-content">
+              <div>
+                <h1 className="text-3xl font-display font-medium">
+                  {lang === 'it' ? 'Email di conferma prenotazione' : 'Booking confirmation email'}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {lang === 'it'
+                    ? 'Email automatica inviata all\u2019ospite quando una prenotazione viene confermata. Personalizza oggetto, testo e contatti della struttura.'
+                    : 'Automatic email sent to the guest when a booking is confirmed. Edit subject, body and property contacts.'}
+                </p>
+              </div>
+
+              <div className="surface-card p-6 space-y-5">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-5 h-5"
+                    checked={!!siteSettings.confirmation_email_enabled}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_enabled: e.target.checked })}
+                    data-testid="email-enabled-toggle"
+                  />
+                  <span className="text-sm font-medium">
+                    {lang === 'it' ? 'Invio email automatica abilitato' : 'Automatic email enabled'}
+                  </span>
+                </label>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-2">
+                    {lang === 'it' ? 'Oggetto' : 'Subject'}
+                  </label>
+                  <Input
+                    value={siteSettings.confirmation_email_subject || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_subject: e.target.value })}
+                    placeholder="Prenotazione confermata — {{property_name}}"
+                    data-testid="email-subject-input"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-2">
+                    {lang === 'it' ? 'Corpo dell\u2019email' : 'Email body'}
+                  </label>
+                  <textarea
+                    rows={18}
+                    value={siteSettings.confirmation_email_body || ''}
+                    onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_body: e.target.value })}
+                    className="w-full bg-card border border-border/60 px-3 py-2 text-sm font-mono resize-y"
+                    data-testid="email-body-textarea"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {lang === 'it' ? 'Variabili disponibili: ' : 'Available variables: '}
+                    <code className="text-[10px]">{'{{guest_name}} {{property_name}} {{property_address}} {{check_in}} {{check_out}} {{check_in_time}} {{check_out_time}} {{nights}} {{guests}} {{total}} {{payment_method}} {{deposit_line}} {{contact_phone}} {{contact_email}}'}</code>
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-border/40">
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-2">
+                      {lang === 'it' ? 'Telefono struttura' : 'Property phone'}
+                    </label>
+                    <Input
+                      value={siteSettings.confirmation_email_contact_phone || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_contact_phone: e.target.value })}
+                      placeholder="+39 333 1234567"
+                      data-testid="email-contact-phone"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-2">
+                      {lang === 'it' ? 'Email struttura' : 'Property email'}
+                    </label>
+                    <Input
+                      type="email"
+                      value={siteSettings.confirmation_email_contact_email || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_contact_email: e.target.value })}
+                      placeholder="prenotazioni@terracito.it"
+                      data-testid="email-contact-email"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-2">
+                      {lang === 'it' ? 'Indirizzo (fallback)' : 'Address (fallback)'}
+                    </label>
+                    <Input
+                      value={siteSettings.confirmation_email_contact_address || ''}
+                      onChange={(e) => setSiteSettings({ ...siteSettings, confirmation_email_contact_address: e.target.value })}
+                      placeholder="Via Galvani, Reggio Calabria"
+                      data-testid="email-contact-address"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 justify-end pt-3 border-t border-border/40">
+                  <Button
+                    variant="outline"
+                    disabled={!siteSettingsLoaded || sendingTestEmail}
+                    onClick={async () => {
+                      const to = window.prompt(
+                        lang === 'it' ? 'Email destinatario per il test:' : 'Recipient email for the test:',
+                        user?.email || ''
+                      );
+                      if (!to) return;
+                      setSendingTestEmail(true);
+                      try {
+                        await axios.post(`${API}/admin/email/test`, { to });
+                        toast.success(lang === 'it' ? `Email di prova inviata a ${to}` : `Test email sent to ${to}`);
+                      } catch (e) {
+                        toast.error(e.response?.data?.detail || t('common.error'));
+                      } finally {
+                        setSendingTestEmail(false);
+                      }
+                    }}
+                    data-testid="send-test-email-btn"
+                  >
+                    <Mail className="w-4 h-4 mr-1.5" />
+                    {sendingTestEmail
+                      ? (lang === 'it' ? 'Invio\u2026' : 'Sending\u2026')
+                      : (lang === 'it' ? 'Invia email di prova' : 'Send test email')}
+                  </Button>
+
+                  <Button
+                    onClick={async () => {
+                      setSavingSiteSettings(true);
+                      try {
+                        const res = await axios.put(`${API}/admin/site-settings`, siteSettings);
+                        setSiteSettings({ ...siteSettings, ...res.data });
+                        toast.success(lang === 'it' ? 'Email salvata' : 'Email saved');
+                      } catch (e) {
+                        toast.error(e.response?.data?.detail || t('common.error'));
+                      } finally {
+                        setSavingSiteSettings(false);
+                      }
+                    }}
+                    disabled={!siteSettingsLoaded || savingSiteSettings}
+                    data-testid="save-email-settings"
+                  >
+                    {savingSiteSettings
+                      ? (lang === 'it' ? 'Salvataggio\u2026' : 'Saving\u2026')
+                      : (lang === 'it' ? 'Salva email' : 'Save email')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Payment Link Tab */}
+          {activeTab === 'paylink' && <PaymentLinkPanel lang={lang} t={t} />}
 
         </main>
 
