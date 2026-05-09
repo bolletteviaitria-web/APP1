@@ -20,12 +20,12 @@ export const BookingPage = () => {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
 
-  const { property, dateRange, guests, selectedExtras, priceBreakdown } = location.state || {};
+  const { property, dateRange, guests, selectedExtras, priceBreakdown, prefill } = location.state || {};
 
   const [formData, setFormData] = useState({
-    guest_name: '',
-    guest_email: '',
-    guest_phone: '',
+    guest_name: prefill?.guest_name || '',
+    guest_email: prefill?.guest_email || '',
+    guest_phone: prefill?.guest_phone || '',
     notes: ''
   });
   const [paymentType, setPaymentType] = useState('full');
@@ -136,6 +136,16 @@ export const BookingPage = () => {
               {/* Guest Details */}
               <div className="glass p-6 space-y-6" data-testid="guest-details-form">
                 <h2 className="text-xl font-display font-medium">{t('booking.yourDetails')}</h2>
+                {prefill && (prefill.guest_name || prefill.guest_email || prefill.guest_phone) && (
+                  <p
+                    className="text-xs text-primary/90 bg-primary/5 border border-primary/20 px-3 py-2 -mt-3"
+                    data-testid="prefill-notice"
+                  >
+                    {lang === 'it'
+                      ? '\u2728 Abbiamo gi\u00e0 i tuoi dati dalla chat \u2014 controlla che siano corretti.'
+                      : '\u2728 We already have your details from the chat \u2014 just double-check them.'}
+                  </p>
+                )}
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

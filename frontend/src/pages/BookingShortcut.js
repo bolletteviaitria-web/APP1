@@ -32,6 +32,7 @@ export const BookingShortcut = () => {
       const checkout = sp.get('checkout');
       const guestsRaw = sp.get('guests');
       const guests = Math.max(1, parseInt(guestsRaw || '2', 10) || 2);
+      const session = sp.get('session');
 
       if (!slug || !checkin || !checkout) {
         toast.error(lang === 'it' ? 'Link prenotazione non valido' : 'Invalid booking link');
@@ -40,9 +41,15 @@ export const BookingShortcut = () => {
       }
 
       try {
-        // 1) Load property
-        const pRes = await axios.get(`${API}/properties/${slug}`);
+        // 1) Load property + lead contact (parallel)
+        const [pRes, leadRes] = await Promise.all([
+          axios.get(`${API}/properties/${slug}`),
+          session
+            ? axios.get(`${API}/chat/lead/${session}/contact`).catch(() => ({ data: null }))
+            : Promise.resolve({ data: null }),
+        ]);
         const property = pRes.data;
+        const leadContact = leadRes?.data || null;
 
         // 2) Compute price
         const from = parseISO(checkin);
@@ -65,7 +72,14 @@ export const BookingShortcut = () => {
             guests,
             selectedExtras: [],
             priceBreakdown: priceRes.data,
-            nights
+            nights,
+            prefill: leadContact && (leadContact.name || leadContact.email || leadContact.phone)
+              ? {
+                  guest_name: leadContact.name || '',
+                  guest_email: leadContact.email || '',
+                  guest_phone: leadContact.phone || '',
+                }
+              : null,
           }
         });
       } catch (err) {

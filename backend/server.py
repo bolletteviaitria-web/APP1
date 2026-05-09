@@ -2090,9 +2090,10 @@ async def _build_system_prompt(
         "- Se chiede date, verifica disponibilità (vedi BOOKING_CALENDAR e AVAILABILITY_RESULT sotto).\n"
         "- Se chiede di vedere foto, emetti il tag `<SHOW_IMAGES>current</SHOW_IMAGES>` su riga a sé.\n"
         "- **LINK FINALIZZAZIONE**: quando sei pronto a chiudere (l'ospite ha detto \"procediamo\", \"ok prenoto\", o chiede come pagare), "
-        "mandagli un link pulito nel formato `/prenota/<slug>?checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&guests=N` "
-        "(usa le date e gli ospiti esatti che sono stati confermati nella conversazione, dallo slug della CURRENT PROPERTY). "
-        "Scrivilo come testo inline, non come markdown: \"Ti mando il link per finalizzare: /prenota/villa-smeraldo?checkin=2026-05-20&checkout=2026-05-23&guests=4\". "
+        "mandagli un link pulito nel formato `/prenota/<slug>?checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&guests=N&session=<SESSION_ID>` "
+        "(usa le date e gli ospiti esatti che sono stati confermati nella conversazione, lo slug della CURRENT PROPERTY, "
+        "e SEMPRE in coda il valore esatto di SESSION_ID che trovi nel blocco DATI SESSIONE qui sotto — serve per pre-compilare nome/email/telefono dal CRM e non far ridigitare al cliente). "
+        "Scrivilo come testo inline, non come markdown: \"Ti mando il link per finalizzare: /prenota/villa-smeraldo?checkin=2026-05-20&checkout=2026-05-23&guests=4&session=abc123\". "
         "La pagina aprirà il form di prenotazione con tutto già pre-compilato.\n"
         "\n## DATI DELL'OSPITE — RACCOLTA GRADUALE\n"
         "- NON chiedere nome/telefono/email all'inizio: lascia parlare l'ospite e crea un minimo di fiducia.\n"
@@ -2363,6 +2364,25 @@ async def _extract_and_store_lead(
     )
 
 
+@api_router.get("/chat/lead/{session_id}/contact")
+async def get_chat_lead_contact_public(session_id: str):
+    """Public endpoint — returns ONLY the contact fields (name/email/phone)
+    captured by the AI for a given chat session, so the booking page can
+    pre-fill the form when the guest follows the AI-sent /prenota/<slug> link.
+    Stripped of all admin-only fields (reason, note, status, documents…)."""
+    if not session_id or len(session_id) < 4:
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    lead = await db.chat_leads.find_one({"session_id": session_id}, {"_id": 0})
+    if not lead:
+        return {"name": None, "email": None, "phone": None, "guests_count": None}
+    return {
+        "name": lead.get("name"),
+        "email": lead.get("email"),
+        "phone": lead.get("phone"),
+        "guests_count": lead.get("guests_count"),
+    }
+
+
 @api_router.post("/chat/message", response_model=ChatResponse)
 async def chat_message(req: ChatRequest):
     if not EMERGENT_LLM_KEY:
@@ -2484,8 +2504,9 @@ async def chat_message(req: ChatRequest):
             history_prefix = "\n".join(lines)
 
     today_line = f"[TODAY: {datetime.now(timezone.utc).date().isoformat()}]"
+    session_line = f"[SESSION_ID: {req.session_id}]  (usa questo valore esatto in coda al link /prenota/... come &session=<SESSION_ID>)"
 
-    parts = [p for p in (history_prefix, today_line, known_info_block, availability_prefix, price_prefix) if p]
+    parts = [p for p in (history_prefix, today_line, session_line, known_info_block, availability_prefix, price_prefix) if p]
     if parts:
         user_text_for_llm = "\n\n".join(parts) + "\n\n---\nGuest message:\n" + req.message
     else:

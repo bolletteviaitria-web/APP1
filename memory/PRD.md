@@ -56,6 +56,8 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-09** — Iteration 25: **Auto-prefill form prenotazione dai dati AI/CRM**. Quando l'AI genera il link `/prenota/<slug>` ora aggiunge automaticamente `&session=<session_id>` (instruction nel system prompt + nuovo blocco `[SESSION_ID: ...]` iniettato per turno). Nuovo endpoint pubblico `GET /api/chat/lead/{session_id}/contact` che restituisce solo nome/email/telefono/guests_count del lead (no campi admin). `BookingShortcut.js` ora fa fetch parallelo property+lead, passa `prefill` nello state. `BookingPage.js` usa `prefill` come valore iniziale di `formData` e mostra un notice "Abbiamo già i tuoi dati dalla chat — controlla che siano corretti". Verificato E2E: chat in 2 turni → endpoint restituisce email/phone → AI invia link con session param → BookingPage pre-compila. Riduce drasticamente la frizione di conversione (cliente non ridigita dati che ha appena scritto in chat).
+
 - **2026-05-08** — Iteration 24: **5 funzionalità nuove + fix critico AI**.
   (a) **Alert ROSSO sul caricamento documento** in BookingSuccessPage (DocumentUpload.js): banner rosso con icona `AlertTriangle`, testo "Importante — Azione richiesta", spiegazione che senza documento non si possono consegnare le chiavi.
   (b) **Cauzione condizionale**: `security_deposit` è applicato SOLO se notti > 7 (8+ notti). Per soggiorni 1-7 notti la cauzione è zero. Modifica in `calculate_price`. Verificato: 3 notti → €0 deposit, 10 notti → €500.
