@@ -2373,14 +2373,17 @@ async def _verify_guest_match(
     phone: Optional[str],
     property_id: Optional[str],
 ) -> Optional[dict]:
-    """Find a booking that matches the provided identifiers AND is currently active
-    (today between check_in - 1d and check_out + 1d). Returns the matched booking
-    document or None. NEVER returns iCal-only blocks (those have no contact info)."""
+    """Find a booking that matches the provided identifiers AND is currently
+    relevant: the guest can verify from 30 days before check-in (to prepare)
+    up to 7 days after check-out (for post-stay support). Returns the matched
+    booking document or None. NEVER returns iCal-only blocks (those have no
+    contact info)."""
     if not (booking_code or email or phone):
         return None
     today = datetime.now(timezone.utc).date()
-    window_start = (today - timedelta(days=1)).isoformat()
-    window_end = (today + timedelta(days=1)).isoformat()
+    # Window: check-in can be up to 30 days in the future; check-out up to 7 days in the past.
+    window_end = (today + timedelta(days=30)).isoformat()
+    window_start = (today - timedelta(days=7)).isoformat()
     base: Dict[str, Any] = {
         "status": {"$in": ["confirmed", "completed", "pending"]},
         "check_in": {"$lte": window_end},

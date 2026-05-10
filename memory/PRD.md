@@ -56,6 +56,14 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-10** — Iteration 34: **🪟 Finestra verifica allargata — l'ospite può sbloccare i codici prima del check-in**.
+  Bug riportato: l'utente reale (PREN-49275092, check-in 31 maggio, oggi 10 maggio = 21 giorni di distanza) riceveva "codice non corrispondente" pur avendo una prenotazione confermata via email. Causa: la finestra di `_verify_guest_match` era `today ± 1 giorno` — troppo stretta per permettere all'ospite di prepararsi prima dell'arrivo.
+  Fix: allargata la finestra a **`check_in − 30 giorni ≤ oggi ≤ check_out + 7 giorni`**. Così:
+  - Un ospite può recuperare codici/WiFi/indirizzo fino a 1 mese prima del check-in (per organizzarsi).
+  - Resta accessibile fino a 1 settimana dopo il check-out (eventuali dimenticanze, domande post-stay).
+  - Una prenotazione di 3 anni fa o di 5 mesi nel futuro continua a essere fuori finestra (no leak retroattivi/anticipati indebiti).
+  Verificato E2E: inserito un finto booking confermato `PREN-49275092` con check-in 31/05/2026, l'AI ora sblocca correttamente e mostra i codici dal welcome_manual.
+
 - **2026-05-10** — Iteration 33: **🔒 Policy verifica STRICT — solo codice PREN-XXXXXXXX sblocca**.
   Bug riportato dal proprietario: in una conversazione reale l'AI ha consegnato i codici di accesso veri (cancello, lucchetto, WiFi, indirizzo) a chi ha fornito solo email + telefono + dichiarazione "ho una prenotazione" — la verify-guest era fallita ma `lead_email`/`lead_phone` accumulati nei turni precedenti facevano scattare il fallback di verifica.
   Nuova policy:
