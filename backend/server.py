@@ -690,8 +690,22 @@ async def _send_booking_confirmation_email(booking_id: str) -> bool:
         "iban": "Bonifico bancario (IBAN)",
     }.get(booking.get("payment_method") or "stripe", booking.get("payment_method") or "—")
 
+    # Booking code shown to the guest — used to verify identity in the chat
+    # before access codes are released. Must be uppercase + PREN- prefix so the
+    # auto-detection regex on /chat/message picks it up unchanged when the guest
+    # pastes it back in the chat widget.
+    booking_id = booking.get("id") or ""
+    booking_code = f"PREN-{booking_id[:8].upper()}" if booking_id else ""
+
+    # Capitalize the first letter of the guest's name for a friendlier salutation
+    raw_name = (booking.get("guest_name") or "ospite").strip()
+    first_name = raw_name.split()[0] if raw_name else "ospite"
+    pretty_name = first_name[:1].upper() + first_name[1:] if first_name else "ospite"
+
     ctx = {
-        "guest_name": booking.get("guest_name") or "ospite",
+        "guest_name": pretty_name,
+        "guest_full_name": raw_name or pretty_name,
+        "booking_code": booking_code,
         "property_name": title,
         "property_address": address,
         "check_in": booking.get("check_in", ""),
@@ -708,6 +722,18 @@ async def _send_booking_confirmation_email(booking_id: str) -> bool:
     }
     subject = _render_template(settings.get("confirmation_email_subject") or DEFAULT_CONFIRMATION_EMAIL_SUBJECT, ctx)
     body_text = _render_template(settings.get("confirmation_email_body") or DEFAULT_CONFIRMATION_EMAIL_BODY, ctx)
+
+    # Always-on safety footer: even if the admin has customised the template and
+    # forgot to include {{booking_code}}, we ALWAYS append the booking code block
+    # (otherwise the guest cannot self-verify in the chat widget on arrival).
+    if booking_code and "{{booking_code}}" not in (settings.get("confirmation_email_body") or DEFAULT_CONFIRMATION_EMAIL_BODY) and booking_code not in body_text:
+        body_text += (
+            f"\n\n🔐 Il tuo codice prenotazione\n"
+            f"{booking_code}\n"
+            f"Conserva questo codice: ti servirà per richiedere i codici di accesso "
+            f"nella chat del sito al tuo arrivo."
+        )
+
     # Convert plain-text body to a basic HTML wrapper (preserve line breaks)
     html_body = (
         "<div style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
@@ -2720,6 +2746,9 @@ async def chat_message(req: ChatRequest):
     # Strict format: PREN-XXXXXXXX (6-32 hex chars). Malformed code-like strings
     # (e.g. "50454ot", "abc123") explicitly produce a "format invalid" verification
     # result so the AI cannot interpret them as success.
+    # Load any previously-captured lead so we can use email/phone given in earlier
+    # turns of the same conversation (avoids re-asking the guest).
+    existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
     verification_result_block = ""
     if not prior_unlocked:
         msg_lower = (req.message or "").lower()
@@ -2761,14 +2790,28 @@ async def chat_message(req: ChatRequest):
                     malformed_code_attempt = True
                     logger.info(f"Malformed code attempt: '{candidate}' (session={req.session_id})")
 
-        if pren_match or (email_match and is_access_context) or phone_match:
+        # Fallback: when the user is asking for sensitive info but didn't provide
+        # an identifier in THIS message, fall back to identifiers already captured
+        # earlier in the conversation (stored in the lead from previous turns).
+        # This lets a real guest who said "il mio numero è X" three turns ago and
+        # now says "dammi i codici" still get verified — without re-typing.
+        lead_email = (existing_lead or {}).get("email") if is_access_context else None
+        lead_phone = (existing_lead or {}).get("phone") if is_access_context else None
+
+        should_attempt_verify = (
+            pren_match
+            or (email_match and is_access_context)
+            or phone_match
+            or (is_access_context and (lead_email or lead_phone))
+        )
+        if should_attempt_verify:
             try:
                 verify_result = await chat_verify_guest(
                     GuestVerifyRequest(
                         session_id=req.session_id,
                         booking_code=pren_match.group(0) if pren_match else None,
-                        email=email_match.group(0) if (email_match and is_access_context) else None,
-                        phone=phone_match.group(0) if phone_match else None,
+                        email=(email_match.group(0) if (email_match and is_access_context) else lead_email),
+                        phone=(phone_match.group(0) if phone_match else lead_phone),
                         property_id=property_doc.get("id") if property_doc else None,
                     ),
                     request=Request(scope={"type": "http", "headers": [], "client": ("0.0.0.0", 0)}),
@@ -2817,9 +2860,7 @@ async def chat_message(req: ChatRequest):
         req.booking_code or "", property_doc.get("id") if property_doc else None
     )
     unlock_sensitive = bool(prior_unlocked or legacy_unlock)
-    # Load any previously-captured lead on this session so the AI knows what
-    # info has already been collected and doesn't re-ask.
-    existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
+    # existing_lead was already loaded earlier in the verification block
     system_prompt = await _build_system_prompt(
         property_doc, req.language, unlock_sensitive, existing_lead, req.message
     )
@@ -3190,6 +3231,9 @@ DEFAULT_CONFIRMATION_EMAIL_BODY = """Ciao {{guest_name}},
 
 la tua prenotazione presso {{property_name}} è stata confermata. ✅
 
+🔐 Codice prenotazione: {{booking_code}}
+(conservalo: ti servirà nella chat del sito per ricevere i codici di accesso al tuo arrivo)
+
 📅 Riepilogo soggiorno
 • Check-in: {{check_in}} (dalle {{check_in_time}})
 • Check-out: {{check_out}} (entro le {{check_out_time}})
@@ -3302,7 +3346,9 @@ async def send_test_confirmation_email(
     settings = await db.site_settings.find_one({"id": "global"}, {"_id": 0}) or {}
     settings = {**SITE_SETTINGS_DEFAULT, **settings}
     mock_ctx = {
-        "guest_name": "Mario Rossi",
+        "guest_name": "Mario",
+        "guest_full_name": "Mario Rossi",
+        "booking_code": "PREN-A1B2C3D4",
         "property_name": "Appartamento Reggio Calabria",
         "property_address": "Via Galvani, Reggio Calabria, Italia",
         "check_in": "2026-07-10",

@@ -56,6 +56,23 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-10** — Iteration 29: **Email conferma → mancava il PREN-XXXXXXXX**. Senza il codice nell'email, l'ospite non poteva poi auto-verificarsi nella chat al check-in (paradosso: tutto il sistema di sicurezza iter 26-28 si basa sul fatto che l'ospite abbia il codice). Fix:
+  - `_send_booking_confirmation_email`: aggiunto `booking_code` (formato `PREN-XXXXXXXX` da prefisso UUID) e `guest_full_name` al ctx. Capitalizzato il primo nome ("Ciao Mario" invece di "Ciao mario").
+  - `DEFAULT_CONFIRMATION_EMAIL_BODY`: aggiunto blocco prominente `🔐 Codice prenotazione: {{booking_code}}` subito dopo il saluto, con nota di conservazione.
+  - **Safety footer**: se admin ha personalizzato il template e rimosso `{{booking_code}}`, backend appende automaticamente il blocco in fondo (l'ospite non può MAI ricevere email senza codice).
+  - Frontend admin tab "Email Conferma": aggiornata la lista variabili + nota gialla che spiega perché `{{booking_code}}` è critico.
+  - Test endpoint mock context aggiornato con il booking_code.
+
+- **2026-05-10** — Iteration 28: **Bilanciamento sicurezza/UX — fallback verifica con lead esistente**.
+
+  **Problema scoperto in test reale**: il fix iter 27 era TROPPO strict — un ospite reale che aveva già dato email+telefono nei turni precedenti della conversazione veniva comunque bloccato quando chiedeva i codici, perché il backend cercava email/telefono solo nel messaggio CORRENTE.
+
+  **Fix**: caricato `existing_lead` PRIMA del blocco di verifica. Se l'utente ha access intent E non c'è identificativo nel messaggio corrente MA nel lead della sessione c'è già email o telefono raccolti → backend usa quei valori per chiamare verify-guest. Match con prenotazione confermata → sblocca. Niente match → rifiuta.
+
+  Risultato: ospite reale fa il suo flow naturale ("ti ho già dato l'email") → backend trova il match nel lead → sblocca con dati veri. Attaccante senza prenotazione reale → comunque bloccato (fallisce verify-guest perché email non corrisponde a nessun booking confermato).
+
+  Verificato E2E: real Giuseppe (booking confermato) sblocca con email+phone solo dal lead, fake attacker (email non-DB) viene rifiutato con messaggio strict.
+
 - **2026-05-10** — Iteration 27: **🛡️ Defense-in-depth contro hallucination codici di accesso (continuazione iter 26)**.
 
   **Problema scoperto**: Anche con welcome_manual mascherato come `[locked]`, l'LLM sotto pressione conversazionale **inventava di sana pianta** codici di accesso ("Cancello 1111", "Lucchetto 1010", "Appartamento 111") che non esistono nel DB. Cliente credeva fossero veri → arrivava sul posto con codici fasulli. Test reale del proprietario ha mostrato che bastava insistere ("sono ospite", "ho il codice 50454ot") perché l'AI cedesse.

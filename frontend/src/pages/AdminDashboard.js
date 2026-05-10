@@ -1682,7 +1682,12 @@ export const AdminDashboard = () => {
                   />
                   <p className="text-xs text-muted-foreground mt-2">
                     {lang === 'it' ? 'Variabili disponibili: ' : 'Available variables: '}
-                    <code className="text-[10px]">{'{{guest_name}} {{property_name}} {{property_address}} {{check_in}} {{check_out}} {{check_in_time}} {{check_out_time}} {{nights}} {{guests}} {{total}} {{payment_method}} {{deposit_line}} {{contact_phone}} {{contact_email}}'}</code>
+                    <code className="text-[10px]">{'{{guest_name}} {{guest_full_name}} {{booking_code}} {{property_name}} {{property_address}} {{check_in}} {{check_out}} {{check_in_time}} {{check_out_time}} {{nights}} {{guests}} {{total}} {{payment_method}} {{deposit_line}} {{contact_phone}} {{contact_email}}'}</code>
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    {lang === 'it'
+                      ? '\u2728 {{booking_code}} è essenziale: senza di esso il cliente non potrà sbloccare i codici di accesso nella chat al check-in. Se rimuovi il segnaposto dal corpo, lo aggiungiamo comunque in fondo come misura di sicurezza.'
+                      : '\u2728 {{booking_code}} is essential: without it the guest cannot unlock the access codes in the chat at check-in. If you remove the placeholder from the body, we still append it at the bottom for safety.'}
                   </p>
                 </div>
 
