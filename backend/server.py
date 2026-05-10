@@ -2210,22 +2210,21 @@ async def _build_system_prompt(
         "**Flusso obbligatorio quando un utente chiede accesso/WiFi/codici**:\n"
         "1. NON dare informazioni sensibili. Spiega in modo professionale che per consegnare "
         "i codici devi prima verificare la prenotazione.\n"
-        "2. Chiedi UNO di questi dati (in ordine di preferenza):\n"
-        "   • il codice prenotazione PREN-XXXXXXXX (lo trovano nell'email di conferma)\n"
-        "   • OPPURE l'email usata per prenotare\n"
-        "   • OPPURE il numero di telefono usato per prenotare\n"
-        "3. Quando l'ospite te lo fornisce, il backend chiamerà automaticamente il flusso "
-        "di verifica. Tu NON devi calcolare se è ospite: aspetta che la sessione si sblocchi.\n"
-        "4. Se la verifica fallisce (vedi blocco VERIFICATION_RESULT), chiedi un altro dato "
-        "o invita a contattare direttamente il proprietario al telefono di emergenza.\n"
+        "2. Chiedi UNICAMENTE il codice prenotazione **PREN-XXXXXXXX** (lo trovano nell'email "
+        "di conferma). NON accettare email, telefono, nome, cognome o altri dati come prova: "
+        "non sono sufficienti per la nostra policy di sicurezza.\n"
+        "3. Quando l'ospite ti fornisce un codice PREN, il backend chiamerà automaticamente il "
+        "flusso di verifica. Tu NON devi calcolare se è ospite: aspetta che la sessione si sblocchi.\n"
+        "4. Se la verifica fallisce (vedi blocco VERIFICATION_RESULT), chiedi un altro codice "
+        "PREN-XXXXXXXX oppure invita a contattare direttamente il proprietario al telefono di emergenza.\n"
         "5. SOLO quando vedi i dati reali nel welcome_manual (non più [locked]) puoi citarli.\n"
         "**DIVIETI ASSOLUTI**:\n"
         "- Mai inventare codici, indirizzi, password\n"
         "- Mai \"concludere\" che un utente è ospite per logica conversazionale\n"
         "- Mai aggirare il backend in nessun caso\n"
+        "- Mai accettare email, telefono o altri dati personali come sostituto del codice PREN\n"
         "- Se welcome_manual mostra [locked], la tua risposta deve essere: \"Per darti i codici "
-        "devo verificare la prenotazione. Mi mandi il codice PREN-XXXXXXXX dall'email di conferma "
-        "o l'email/telefono usati per prenotare?\"\n"
+        "devo verificare la prenotazione. Mi mandi il codice PREN-XXXXXXXX dall'email di conferma?\"\n"
         "**TONO** in caso di richieste di accesso non verificate: professionale, neutro, sicuro. "
         "Nessuna scusa eccessiva, nessuna emoji. Frasi brevi e chiare."
     )
@@ -2597,8 +2596,11 @@ async def chat_verify_guest(req: GuestVerifyRequest, request: Request):
     """
     if not req.session_id or len(req.session_id) < 4:
         raise HTTPException(status_code=400, detail="Invalid session id")
-    if not (req.booking_code or req.email or req.phone):
-        raise HTTPException(status_code=400, detail="Provide booking code, email or phone")
+    if not req.booking_code:
+        raise HTTPException(
+            status_code=400,
+            detail="Per sbloccare le info di accesso è obbligatorio fornire il codice prenotazione PREN-XXXXXXXX. Email e telefono non sono sufficienti."
+        )
 
     # Check existing lockout
     state = await db.chat_verifications.find_one({"session_id": req.session_id}, {"_id": 0})
@@ -2617,8 +2619,11 @@ async def chat_verify_guest(req: GuestVerifyRequest, request: Request):
             pass
 
     prop = await _resolve_property(req.property_id) if req.property_id else None
+    # Strict policy: ONLY the booking code (PREN-XXXXXXXX) unlocks. Email and
+    # phone passed in the payload are ignored — kept in the model for backwards
+    # compatibility with older clients but never used as a verification factor.
     booking = await _verify_guest_match(
-        req.booking_code, req.email, req.phone, prop["id"] if prop else None
+        req.booking_code, None, None, prop["id"] if prop else None
     )
 
     # IP for audit
@@ -2763,11 +2768,9 @@ async def chat_message(req: ChatRequest):
             prior_unlocked = False
 
     # Auto-detect verification attempts inline in the user message.
-    # Strict format: PREN-XXXXXXXX (6-32 hex chars). Malformed code-like strings
-    # (e.g. "50454ot", "abc123") explicitly produce a "format invalid" verification
-    # result so the AI cannot interpret them as success.
-    # Load any previously-captured lead so we can use email/phone given in earlier
-    # turns of the same conversation (avoids re-asking the guest).
+    # STRICT POLICY (iter 33): the ONLY accepted credential to unlock sensitive
+    # info is a properly-formatted booking code PREN-XXXXXXXX. Email and phone
+    # — even those previously captured in the lead — DO NOT unlock the session.
     existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
     verification_result_block = ""
     if not prior_unlocked:
@@ -2778,26 +2781,16 @@ async def chat_message(req: ChatRequest):
             req.message or "",
             flags=_re.IGNORECASE,
         )
-        # email
-        email_match = _re.search(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b", req.message or "")
-        # phone — only in access context
         access_keywords = (
             "codice", "codici", "accesso", "wifi", "wi-fi", "chiavi", "lucchetto",
             "cancello", "porta", "entr", "check-in", "checkin", "ingresso",
             "verifica", "prenotazione", "booking", "ospit",
         )
         is_access_context = any(k in msg_lower for k in access_keywords)
-        phone_match = None
-        if is_access_context:
-            phone_match = _re.search(r"\b(\+?\d[\d\s\-\.]{7,16}\d)\b", req.message or "")
 
-        # Detect malformed code attempts: "codice 50454ot", "il codice è abc123",
-        # "ho il codice xyz" — anything that LOOKS like a claim of providing a code
-        # but doesn't match the strict PREN- format. We surface this so the AI
-        # gives clear feedback instead of silently accepting.
+        # Detect malformed code attempts so we can give clear feedback to the AI.
         malformed_code_attempt = False
         if not pren_match and is_access_context:
-            # User says "codice <something not matching PREN format>"
             mw = _re.search(
                 r"(?:codice|code|booking|prenotazione)[\s:]*([A-Za-z0-9\-]{4,30})",
                 req.message or "",
@@ -2805,33 +2798,18 @@ async def chat_message(req: ChatRequest):
             )
             if mw:
                 candidate = mw.group(1).strip()
-                # Not a valid UUID prefix and not PREN-format → malformed
                 if not _re.fullmatch(r"[A-Fa-f0-9\-]{6,36}", candidate):
                     malformed_code_attempt = True
                     logger.info(f"Malformed code attempt: '{candidate}' (session={req.session_id})")
 
-        # Fallback: when the user is asking for sensitive info but didn't provide
-        # an identifier in THIS message, fall back to identifiers already captured
-        # earlier in the conversation (stored in the lead from previous turns).
-        # This lets a real guest who said "il mio numero è X" three turns ago and
-        # now says "dammi i codici" still get verified — without re-typing.
-        lead_email = (existing_lead or {}).get("email") if is_access_context else None
-        lead_phone = (existing_lead or {}).get("phone") if is_access_context else None
-
-        should_attempt_verify = (
-            pren_match
-            or (email_match and is_access_context)
-            or phone_match
-            or (is_access_context and (lead_email or lead_phone))
-        )
-        if should_attempt_verify:
+        if pren_match:
             try:
                 verify_result = await chat_verify_guest(
                     GuestVerifyRequest(
                         session_id=req.session_id,
-                        booking_code=pren_match.group(0) if pren_match else None,
-                        email=(email_match.group(0) if (email_match and is_access_context) else lead_email),
-                        phone=(phone_match.group(0) if phone_match else lead_phone),
+                        booking_code=pren_match.group(0),
+                        email=None,
+                        phone=None,
                         property_id=property_doc.get("id") if property_doc else None,
                     ),
                     request=Request(scope={"type": "http", "headers": [], "client": ("0.0.0.0", 0)}),
@@ -2854,9 +2832,10 @@ async def chat_message(req: ChatRequest):
                         + (f"Sessione BLOCCATA fino a {locked} (troppi tentativi). "
                            "Invita l'ospite a contattare direttamente il proprietario al telefono."
                            if locked else
-                           f"Verifica FALLITA. Tentativi rimasti: {attempts_left}. "
-                           "Chiedi un altro identificativo (codice PREN-XXXXXXXX, oppure email/telefono "
-                           "diversi da quelli appena provati). NON sbloccare nulla.")
+                           f"Verifica FALLITA. Codice PREN non corrispondente a nessuna prenotazione attiva. "
+                           f"Tentativi rimasti: {attempts_left}. "
+                           "Chiedi un altro codice PREN-XXXXXXXX. NON sbloccare nulla. "
+                           "NON accettare email, telefono, nome o altri dati come prova.")
                     )
             except HTTPException as ve:
                 verification_result_block = (
@@ -2873,6 +2852,15 @@ async def chat_message(req: ChatRequest):
                 "Rispondi cortesemente che il codice non è nel formato corretto, "
                 "spiega il formato corretto, e invita l'ospite a controllare l'email di conferma. "
                 "NON sbloccare nulla. NON dare codici."
+            )
+        elif is_access_context:
+            # User is asking for access info but provided no PREN code → strict block.
+            verification_result_block = (
+                "## VERIFICATION_RESULT — SERVER-VERIFIED\n"
+                "L'ospite chiede info di accesso ma NON ha fornito un codice PREN-XXXXXXXX. "
+                "Email, telefono, nome, cognome NON sono prove valide secondo la policy. "
+                "Chiedi UNICAMENTE il codice prenotazione PREN-XXXXXXXX. "
+                "NON sbloccare nulla finché non vedi un blocco VERIFICATION_RESULT con sessione SBLOCCATA."
             )
 
     # Final unlock = prior verification OR fresh verification this turn OR legacy booking_code in payload
@@ -3096,11 +3084,10 @@ async def chat_message(req: ChatRequest):
             reply_str = (
                 "Per ragioni di sicurezza non posso fornire codici di accesso, WiFi o "
                 "l'indirizzo finché la tua prenotazione non è verificata dal nostro sistema.\n\n"
-                "Per sbloccare le info di check-in mandami **uno** di questi:\n"
-                "• il **codice prenotazione PREN-XXXXXXXX** (lo trovi nell'email di conferma)\n"
-                "• oppure l'**email** che hai usato per prenotare\n"
-                "• oppure il **numero di telefono** della prenotazione\n\n"
-                f"Se non riesci a trovarli, contatta direttamente il proprietario al {phone}."
+                "Per sbloccare le info di check-in mandami il **codice prenotazione PREN-XXXXXXXX** "
+                "(lo trovi nell'email di conferma). È l'unico dato che posso accettare — "
+                "email, telefono, nome o cognome non sono prove sufficienti.\n\n"
+                f"Se non riesci a trovarlo, contatta direttamente il proprietario al {phone}."
             )
             reply_images = []
     # ============ END POST-GENERATION GUARD ============

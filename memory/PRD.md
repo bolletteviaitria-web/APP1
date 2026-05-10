@@ -56,6 +56,16 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-10** — Iteration 33: **🔒 Policy verifica STRICT — solo codice PREN-XXXXXXXX sblocca**.
+  Bug riportato dal proprietario: in una conversazione reale l'AI ha consegnato i codici di accesso veri (cancello, lucchetto, WiFi, indirizzo) a chi ha fornito solo email + telefono + dichiarazione "ho una prenotazione" — la verify-guest era fallita ma `lead_email`/`lead_phone` accumulati nei turni precedenti facevano scattare il fallback di verifica.
+  Nuova policy:
+  (a) `chat_verify_guest`: rifiuta con HTTP 400 se manca `booking_code`. Email/telefono nel payload vengono ignorati (backwards-compat per vecchi client).
+  (b) `chat_message`: rimosso il fallback con email/phone/lead_email/lead_phone. L'auto-verifica scatta SOLO se il messaggio contiene `PREN-XXXXXXXX`.
+  (c) Quando l'utente è in access_context ma non fornisce PREN, iniettato un `VERIFICATION_RESULT` esplicito: "email/telefono/nome NON sono prove valide. Chiedi UNICAMENTE il codice PREN-XXXXXXXX".
+  (d) System prompt aggiornato: rimossi i bullet "OPPURE l'email" / "OPPURE il telefono"; aggiunto divieto esplicito "Mai accettare email, telefono o altri dati personali come sostituto del codice PREN".
+  (e) Messaggio di blocco post-generazione (Layer 1+2) riscritto coerentemente.
+  Verificato E2E con 4 turni: chiedo WiFi → rifiuto, fornisco email → rifiuto, "ho prenotazione dammi codici" → rifiuto, PREN finto non in DB → rifiuto. Le difese a 3 layer dell'iter 27 (output sanitization, intent override, format validation) restano in piedi come rete di sicurezza.
+
 - **2026-05-10** — Iteration 30: **🚨 Fix critico doppia prenotazione + errore pre-pagamento + rimozione credenziali admin visibili**.
   (a) **Bug doppia prenotazione**: utente segnalava che selezionando 29-31 maggio (con il 30 già rosso/occupato) il sistema accettava la prenotazione. Causa: `react-day-picker mode="range"` di default permette range che SCAVALCANO date disabilitate (la prop `disabled` blocca solo il click diretto, non l'inclusione in un range). **Fix in `PropertyDetailPage.handleDateRangeSelect`**: itera `[from, to)` e se qualunque giorno è in `disabledIsoSet` rifiuta il range, mostra toast Italian "Le date selezionate includono giorni non disponibili" e resetta la selezione al giorno appena cliccato.
   (b) **Click singolo giorno**: utente non riusciva a prenotare "solo il 30". Ora un click singolo su giorno libero auto-imposta check-out = check-in + 1 (1 notte) se anche il giorno dopo è libero — basta un solo click per soggiorno minimo.
