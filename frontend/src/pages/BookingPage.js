@@ -66,6 +66,24 @@ export const BookingPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Defensive pre-submit guards: avoid sending broken requests to Stripe.
+    const expectedAmount = paymentType === 'full'
+      ? priceBreakdown?.total
+      : priceBreakdown?.security_deposit;
+    if (paymentMethod === 'stripe' && (!expectedAmount || expectedAmount <= 0)) {
+      toast.error(
+        lang === 'it'
+          ? 'Importo non valido per il pagamento online. Ricarica la pagina e riprova, oppure scegli un altro metodo di pagamento.'
+          : 'Invalid payment amount. Reload the page and try again, or pick another payment method.'
+      );
+      return;
+    }
+    if (!formData.guest_name || !formData.guest_email || !formData.guest_phone) {
+      toast.error(lang === 'it' ? 'Compila tutti i campi obbligatori.' : 'Please fill all required fields.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -119,7 +137,14 @@ export const BookingPage = () => {
       window.location.href = checkoutResponse.data.checkout_url;
     } catch (error) {
       console.error('Booking error:', error);
-      toast.error(error.response?.data?.detail || t('common.error'));
+      // Give the user the actual server message when available, otherwise a more
+      // specific fallback that hints at the booking phase that failed.
+      const detail = error.response?.data?.detail;
+      const status = error.response?.status;
+      let msg = detail
+        || (status ? (lang === 'it' ? `Errore ${status} durante il pagamento.` : `Payment error ${status}.`) : null)
+        || (lang === 'it' ? 'Errore di rete: controlla la connessione e riprova.' : 'Network error: check your connection and retry.');
+      toast.error(msg);
       setLoading(false);
     }
   };

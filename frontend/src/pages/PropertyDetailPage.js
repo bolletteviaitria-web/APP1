@@ -585,9 +585,24 @@ export const PropertyDetailPage = () => {
 
               {/* Calendar */}
               <div>
-                <label className="text-xs uppercase tracking-wider text-muted-foreground mb-3 block">
-                  {t('detail.checkIn')} - {t('detail.checkOut')}
-                </label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    {t('detail.checkIn')} - {t('detail.checkOut')}
+                  </label>
+                  {(dateRange.from || dateRange.to) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDateRange({ from: null, to: null });
+                        setPriceBreakdown(null);
+                      }}
+                      className="text-xs text-primary hover:underline"
+                      data-testid="clear-dates-btn"
+                    >
+                      {lang === 'it' ? 'Cancella selezione' : 'Clear selection'}
+                    </button>
+                  )}
+                </div>
                 <Calendar
                   mode="range"
                   selected={dateRange}
