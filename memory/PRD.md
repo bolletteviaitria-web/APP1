@@ -56,6 +56,22 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-10** — Iteration 27: **🛡️ Defense-in-depth contro hallucination codici di accesso (continuazione iter 26)**.
+
+  **Problema scoperto**: Anche con welcome_manual mascherato come `[locked]`, l'LLM sotto pressione conversazionale **inventava di sana pianta** codici di accesso ("Cancello 1111", "Lucchetto 1010", "Appartamento 111") che non esistono nel DB. Cliente credeva fossero veri → arrivava sul posto con codici fasulli. Test reale del proprietario ha mostrato che bastava insistere ("sono ospite", "ho il codice 50454ot") perché l'AI cedesse.
+
+  **3 livelli di difesa post-generazione aggiunti** in `chat_message`:
+
+  1. **Validazione formato strict del booking_code**: regex richiede ESATTAMENTE `PREN-XXXXXXXX` (6-32 hex). Codici tipo "50454ot", "abc-123", "ABC1234567" sono ora classificati come `malformed_code_attempt` e generano un blocco `VERIFICATION_RESULT` esplicito che dice all'AI di NON sbloccare e spiegare il formato corretto.
+
+  2. **Intent override (bypass LLM)**: se la sessione non è verificata E il messaggio dell'utente contiene parole-chiave sensibili (`codici`, `wifi`, `password`, `lucchetto`, `cancello`, `chiave`, `indirizzo`, `appartamento`, `che piano`, ecc.), il backend **scarta completamente** la risposta dell'LLM e la sostituisce con un messaggio strict che richiede PREN-XXXXXXXX/email/telefono. L'LLM non ha modo di leakare.
+
+  3. **Output sanitization (regex scan)**: anche se l'utente sembra innocente, scansione del reply per pattern di leak — codici 4 cifre vicino a parole-chiave, "WiFi: ...", "appartamento N", indirizzi via+civico, codici noti hallucinati ("1111", "1010", "Password123"). Match → reply sostituito + log `chat_security_blocks` per audit forense (session_id, timestamp, IP indiretto, blocked_patterns, reply_excerpt).
+
+  Verificato E2E: 5 varianti di codice malformato tutte bloccate; PREN reale sblocca correttamente la sessione e l'AI risponde con dati veri (codice 1234#, WiFi TerracitoAppartments/CostaSmMare26 invece di hallucination).
+
+  **NB**: Tutto è defence-in-depth — il prompt strict resta in piedi, il mascheramento del welcome_manual resta in piedi, queste 3 layer sono ulteriore rete di sicurezza.
+
 - **2026-05-10** — Iteration 26: **🔐 Sicurezza accesso ospite — fix critico fuga codici**. **Bug bloccato**: l'AI dava i codici di accesso fisico (cancello, lucchetto, WiFi, indirizzo civico) a chiunque dicesse "sono un ospite" / "sono già qui", senza verifica. Implementato sistema **strict gate** secondo regole utente:
   - `_format_welcome_manual()` ora maschera TUTTI i campi sensibili (address, wifi_name, wifi_password, parking, house_rules, transport, emergency_contacts, local_tips, extra_faq) con placeholder `[locked — backend verification required]` finché la sessione non è verificata. Prima erano mascherati solo wifi_password e address.
   - Nuovo endpoint `POST /api/chat/verify-guest` con: rate limit 3 tentativi → lockout 30 min, audit log in `chat_verification_audit`, accetta `booking_code` (PREN-XXXXXXXX o UUID), `email`, `phone`. Match richiede booking attivo (oggi tra check_in-1d e check_out+1d). Su successo emette `session_token` (24h).

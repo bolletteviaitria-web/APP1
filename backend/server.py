@@ -2717,24 +2717,49 @@ async def chat_message(req: ChatRequest):
             prior_unlocked = False
 
     # Auto-detect verification attempts inline in the user message.
-    # Triggers: PREN-XXXX code, OR any email + a date that looks like check-in/out.
+    # Strict format: PREN-XXXXXXXX (6-32 hex chars). Malformed code-like strings
+    # (e.g. "50454ot", "abc123") explicitly produce a "format invalid" verification
+    # result so the AI cannot interpret them as success.
     verification_result_block = ""
     if not prior_unlocked:
         msg_lower = (req.message or "").lower()
-        # 1) PREN-XXXX code
-        pren_match = _re.search(r"\bPREN[-\s]?([A-F0-9]{6,32})\b", req.message or "", flags=_re.IGNORECASE)
-        # 2) email
+        # Strict: PREN- prefix REQUIRED, then 6-32 hex chars
+        pren_match = _re.search(
+            r"\bPREN[\s-]?([A-F0-9]{6,32})\b",
+            req.message or "",
+            flags=_re.IGNORECASE,
+        )
+        # email
         email_match = _re.search(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b", req.message or "")
-        # 3) phone — only if user is in a verification-context message ("codice", "wifi", etc.)
-        phone_match = None
+        # phone — only in access context
         access_keywords = (
             "codice", "codici", "accesso", "wifi", "wi-fi", "chiavi", "lucchetto",
             "cancello", "porta", "entr", "check-in", "checkin", "ingresso",
-            "verifica", "prenotazione", "booking",
+            "verifica", "prenotazione", "booking", "ospit",
         )
         is_access_context = any(k in msg_lower for k in access_keywords)
+        phone_match = None
         if is_access_context:
             phone_match = _re.search(r"\b(\+?\d[\d\s\-\.]{7,16}\d)\b", req.message or "")
+
+        # Detect malformed code attempts: "codice 50454ot", "il codice è abc123",
+        # "ho il codice xyz" — anything that LOOKS like a claim of providing a code
+        # but doesn't match the strict PREN- format. We surface this so the AI
+        # gives clear feedback instead of silently accepting.
+        malformed_code_attempt = False
+        if not pren_match and is_access_context:
+            # User says "codice <something not matching PREN format>"
+            mw = _re.search(
+                r"(?:codice|code|booking|prenotazione)[\s:]*([A-Za-z0-9\-]{4,30})",
+                req.message or "",
+                flags=_re.IGNORECASE,
+            )
+            if mw:
+                candidate = mw.group(1).strip()
+                # Not a valid UUID prefix and not PREN-format → malformed
+                if not _re.fullmatch(r"[A-Fa-f0-9\-]{6,36}", candidate):
+                    malformed_code_attempt = True
+                    logger.info(f"Malformed code attempt: '{candidate}' (session={req.session_id})")
 
         if pren_match or (email_match and is_access_context) or phone_match:
             try:
@@ -2777,6 +2802,15 @@ async def chat_message(req: ChatRequest):
                 )
             except Exception as ve:
                 logger.warning(f"Auto verify-guest failed: {ve}")
+        elif malformed_code_attempt:
+            verification_result_block = (
+                "## VERIFICATION_RESULT — SERVER-VERIFIED\n"
+                "L'ospite ha tentato di fornire un codice ma il FORMATO È INVALIDO. "
+                "Il codice corretto è esattamente nel formato PREN-XXXXXXXX (es. PREN-A1B2C3D4). "
+                "Rispondi cortesemente che il codice non è nel formato corretto, "
+                "spiega il formato corretto, e invita l'ospite a controllare l'email di conferma. "
+                "NON sbloccare nulla. NON dare codici."
+            )
 
     # Final unlock = prior verification OR fresh verification this turn OR legacy booking_code in payload
     legacy_unlock = await _verify_booking_code(
@@ -2933,6 +2967,82 @@ async def chat_message(req: ChatRequest):
         logger.warning(f"Image resolve failed (non-fatal): {img_err}")
         reply_images = []
     reply_str = _strip_images_tag(reply_str)
+
+    # ============ POST-GENERATION SAFETY GUARD (strict) ============
+    # Defence-in-depth: even with strict prompt rules, an LLM can hallucinate access
+    # codes under social pressure ("sono ospite", invented codes, urgency). When the
+    # session is NOT verified by the backend, we apply two layers:
+    #
+    # LAYER 1 — Intent override: if the USER is clearly asking for sensitive info
+    # (codes / wifi / address / apartment / keys), we discard the LLM reply entirely
+    # and substitute a strict verification request. The LLM never gets to leak.
+    #
+    # LAYER 2 — Output sanitisation: regex scan on the reply for code-like patterns.
+    # Even when the user's intent looks innocent, if the model output contains
+    # numeric codes, wifi disclosures, or full street addresses, we override.
+    if not unlock_sensitive:
+        msg = (req.message or "").lower()
+        sensitive_intent_keywords = (
+            "codic", "pin ", "wifi", "wi-fi", "wi fi", "password", "lucchett",
+            "cancell", "chiave", "chiavi", "porta ", "porte ", "ingress",
+            "entrare", "entro", "apertura", "aprire", "cassafort", "key ",
+            "dammi access", "voglio access", "voglio entr", "indirizz",
+            "appartament", "che piano", "dove abit", "dove si trova",
+        )
+        intent_matches_sensitive = any(k in msg for k in sensitive_intent_keywords)
+
+        # Compute leak patterns once (used by Layer 2 + audit logging)
+        leak_patterns = [
+            # Code patterns near access words ("codice 1111", "lucchetto 1010", "PIN 0000")
+            r"(?i)\b(codice|pin|lucchetto|cassaforte|cancello|porta|chiave|key)[^\d]{0,30}\b\d{3,8}\b",
+            # Standalone 4-digit code introduced as instruction
+            r"(?i)\b(digita|inserisci|premi|usa)\s*:?\s*\b\d{3,8}\b",
+            # Explicit "WiFi password" disclosure
+            r"(?i)\b(wifi|wi-?fi|password|pwd)\s*(name|nome)?\s*[:\-=]\s*\S{3,}",
+            # Apartment + number
+            r"(?i)\bappartamento\s+\d+\b",
+            # Real & known-hallucinated codes for this property
+            r"\b1111\b", r"\b1010\b", r"\bPassword123\b", r"\bTerracito\b\s*[:\-]",
+            # Full street + civic number
+            r"(?i)\bvia\s+[A-Za-zÀ-ÿ\s']{2,40}\s+\d+\b",
+        ]
+        leaks_found = []
+        for pat in leak_patterns:
+            m = _re.search(pat, reply_str)
+            if m:
+                leaks_found.append(m.group(0)[:60])
+
+        # Trigger override if EITHER the user's intent is sensitive OR the reply leaks.
+        if intent_matches_sensitive or leaks_found:
+            logger.error(
+                f"[SECURITY] AI sensitive-info bypass for session={req.session_id} "
+                f"property={property_doc.get('id') if property_doc else None} "
+                f"intent_match={intent_matches_sensitive} leaks={leaks_found}"
+            )
+            try:
+                await db.chat_security_blocks.insert_one({
+                    "session_id": req.session_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "property_id": property_doc.get("id") if property_doc else None,
+                    "user_message": (req.message or "")[:200],
+                    "intent_match": intent_matches_sensitive,
+                    "blocked_patterns": leaks_found,
+                    "blocked_reply_excerpt": reply_str[:300],
+                })
+            except Exception:
+                pass
+            phone = WHATSAPP_NUMBER or "+39 344 5361830"
+            reply_str = (
+                "Per ragioni di sicurezza non posso fornire codici di accesso, WiFi o "
+                "l'indirizzo finché la tua prenotazione non è verificata dal nostro sistema.\n\n"
+                "Per sbloccare le info di check-in mandami **uno** di questi:\n"
+                "• il **codice prenotazione PREN-XXXXXXXX** (lo trovi nell'email di conferma)\n"
+                "• oppure l'**email** che hai usato per prenotare\n"
+                "• oppure il **numero di telefono** della prenotazione\n\n"
+                f"Se non riesci a trovarli, contatta direttamente il proprietario al {phone}."
+            )
+            reply_images = []
+    # ============ END POST-GENERATION GUARD ============
 
     needs_host_contact = WHATSAPP_NUMBER in reply_str or any(
         kw in reply_str.lower() for kw in ["contatta l'host", "contact the host", "chiama l'host", "call the host"]
