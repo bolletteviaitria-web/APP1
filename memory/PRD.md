@@ -56,6 +56,14 @@ Sito web completo per gestione di multiple case vacanza in Italia. Posizionament
 - `contacts`
 
 ## Changelog
+- **2026-05-10** — Iteration 30: **🚨 Fix critico doppia prenotazione + errore pre-pagamento + rimozione credenziali admin visibili**.
+  (a) **Bug doppia prenotazione**: utente segnalava che selezionando 29-31 maggio (con il 30 già rosso/occupato) il sistema accettava la prenotazione. Causa: `react-day-picker mode="range"` di default permette range che SCAVALCANO date disabilitate (la prop `disabled` blocca solo il click diretto, non l'inclusione in un range). **Fix in `PropertyDetailPage.handleDateRangeSelect`**: itera `[from, to)` e se qualunque giorno è in `disabledIsoSet` rifiuta il range, mostra toast Italian "Le date selezionate includono giorni non disponibili" e resetta la selezione al giorno appena cliccato.
+  (b) **Click singolo giorno**: utente non riusciva a prenotare "solo il 30". Ora un click singolo su giorno libero auto-imposta check-out = check-in + 1 (1 notte) se anche il giorno dopo è libero — basta un solo click per soggiorno minimo.
+  (c) **Backend overlap iCal**: `POST /api/bookings` ora controlla anche la collection `ical_events` (Airbnb/Booking importati) con la stessa overlap-math half-open di bookings → previene doppie prenotazioni con piattaforme esterne.
+  (d) **Errore pre-pagamento su data libera**: Stripe Checkout non può creare sessioni da €0. Quando il soggiorno è ≤7 notti `security_deposit=0` e l'utente sceglieva "Solo cauzione" → 500 opaco da Stripe. Fix doppio: backend `POST /api/payments/create-checkout` aggiunge guard `amount > 0` che restituisce 400 con messaggio italiano chiaro; frontend `BookingPage` nasconde l'opzione "Solo cauzione" (`depositAvailable=false`) quando `security_deposit=0` e forza `paymentType='full'` automaticamente.
+  (e) **Credenziali demo admin nascoste**: rimosso il blocco "Demo Admin: admin@... / admin123" che era visibile a chiunque sulla pagina `/login`.
+  Verificato E2E con testing agent (5/5 backend pytest pass + 5/5 UI Playwright pass): range che scavalca data bloccata → rifiutato con toast; click singolo su giorno libero → auto-range +1; iCal overlap → 400; deposit-€0 → 400 italiano clean; login senza credenziali esposte; Stripe full-payment senza regressioni.
+
 - **2026-05-10** — Iteration 29: **Email conferma → mancava il PREN-XXXXXXXX**. Senza il codice nell'email, l'ospite non poteva poi auto-verificarsi nella chat al check-in (paradosso: tutto il sistema di sicurezza iter 26-28 si basa sul fatto che l'ospite abbia il codice). Fix:
   - `_send_booking_confirmation_email`: aggiunto `booking_code` (formato `PREN-XXXXXXXX` da prefisso UUID) e `guest_full_name` al ctx. Capitalizzato il primo nome ("Ciao Mario" invece di "Ciao mario").
   - `DEFAULT_CONFIRMATION_EMAIL_BODY`: aggiunto blocco prominente `🔐 Codice prenotazione: {{booking_code}}` subito dopo il saluto, con nota di conservazione.
