@@ -30,6 +30,12 @@ export const BookingPage = () => {
   });
   const [paymentType, setPaymentType] = useState('full');
   const [paymentMethod, setPaymentMethod] = useState('stripe'); // 'stripe' | 'cash' | 'bank_transfer'
+  // Security deposit is conditional (only stays > 7 nights). When zero, the
+  // "deposit only" option is hidden because Stripe can't create a €0 session.
+  const depositAvailable = (priceBreakdown?.security_deposit || 0) > 0;
+  useEffect(() => {
+    if (!depositAvailable && paymentType === 'deposit') setPaymentType('full');
+  }, [depositAvailable, paymentType]);
   const [siteSettings, setSiteSettings] = useState({
     accept_stripe: true, accept_cash: false, accept_bank_transfer: false,
     iban: '', iban_holder: '', iban_bank: '', iban_notes: ''
@@ -243,8 +249,8 @@ export const BookingPage = () => {
                   </RadioGroup>
                 )}
 
-                {/* Split: full vs deposit (only for Stripe) */}
-                {paymentMethod === 'stripe' && (
+                {/* Split: full vs deposit (only for Stripe + when deposit applicable) */}
+                {paymentMethod === 'stripe' && depositAvailable && (
                   <RadioGroup value={paymentType} onValueChange={setPaymentType}>
                     <label className="flex items-center gap-4 p-4 border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
                       <RadioGroupItem value="full" id="full" data-testid="payment-full" />

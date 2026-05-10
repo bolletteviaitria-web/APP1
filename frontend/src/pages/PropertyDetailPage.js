@@ -9,6 +9,7 @@ import {
   Check, Wifi, Car, Waves, Trees, Flame, Wind, Tv, Coffee,
   UtensilsCrossed, Snowflake, Mountain, Building, Palette
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Calendar } from '../components/ui/calendar';
 import { Checkbox } from '../components/ui/checkbox';
@@ -160,6 +161,58 @@ export const PropertyDetailPage = () => {
     unavailable: '!bg-red-100 !text-red-700 !line-through !opacity-100 hover:!bg-red-100',
     available: '!bg-green-50 !text-green-900 hover:!bg-green-100'
   };
+
+  // Custom range selection handler:
+  // 1) Validates that no disabled date is contained inside the selected range
+  //    (react-day-picker by default lets users pick a range that JUMPS OVER
+  //    disabled middle dates → would cause double bookings).
+  // 2) When user clicks a single day (and the next day is free), auto-fills
+  //    check-out = check-in + 1 so a 1-night stay is selectable in one click.
+  const handleDateRangeSelect = useCallback((range) => {
+    if (!range) {
+      setDateRange({ from: null, to: null });
+      setPriceBreakdown(null);
+      return;
+    }
+
+    const { from, to } = range;
+
+    // Single-day click → start a new selection (and auto-suggest +1 night).
+    if (from && !to) {
+      const next = addDays(from, 1);
+      const nextIso = format(next, 'yyyy-MM-dd');
+      // If the day right after check-in is free, propose 1-night stay.
+      if (!disabledIsoSet.has(nextIso)) {
+        setDateRange({ from, to: next });
+      } else {
+        setDateRange({ from, to: null });
+        setPriceBreakdown(null);
+      }
+      return;
+    }
+
+    if (from && to) {
+      // Reject any range that crosses a disabled middle date.
+      // We check [from, to) — the night BEFORE checkout.
+      let cur = new Date(from);
+      const end = new Date(to);
+      while (cur < end) {
+        if (disabledIsoSet.has(format(cur, 'yyyy-MM-dd'))) {
+          toast.error(
+            lang === 'it'
+              ? 'Le date selezionate includono giorni non disponibili. Scegli un intervallo libero.'
+              : 'Your selection includes unavailable dates. Please pick a free range.'
+          );
+          // Reset to the click that triggered the conflict so the user can keep picking.
+          setDateRange({ from: to, to: null });
+          setPriceBreakdown(null);
+          return;
+        }
+        cur = addDays(cur, 1);
+      }
+      setDateRange({ from, to });
+    }
+  }, [disabledIsoSet, lang]);
 
   const handleProceedToBooking = () => {
     if (!dateRange.from || !dateRange.to || !priceBreakdown) return;
@@ -522,7 +575,7 @@ export const PropertyDetailPage = () => {
                 <Calendar
                   mode="range"
                   selected={dateRange}
-                  onSelect={setDateRange}
+                  onSelect={handleDateRangeSelect}
                   disabled={calendarDisabledRules}
                   modifiers={calendarModifiers}
                   modifiersClassNames={calendarModifiersClassNames}

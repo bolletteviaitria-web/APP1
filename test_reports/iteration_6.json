@@ -1,0 +1,34 @@
+{
+  "summary": "Validated 6 critical fixes for the Italian-user reported bugs (calendar range crossing blocked day, single-day booking, iCal overlap rejection in POST /api/bookings, deposit €0 guard in /api/payments/create-checkout, demo admin credentials removed from login, Stripe full-payment regression). 5/5 backend pytest cases pass and 5/5 UI Playwright assertions pass. No regressions found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/login (Accedi)", "issues": ["Card is rendered very low on desktop (~400px of empty space at the top under the navbar). Looks visually empty/lonely. Cosmetic — does not affect functionality."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6_critical_bugs.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PropertyDetailPage.handleDateRangeSelect — correctly validates [from, to) for blocked dates and resets selection with a localized toast. Single-day click auto-fills to+1 only when day+1 is free. Good UX. Verified live: range 2027-05-29→05-31 (May 30 blocked) is rejected with 'Le date selezionate includono giorni non disponibili. Scegli un intervallo libero.' and selection resets. Single-click on 2027-05-14 auto-selects 14→15.",
+    "backend/server.py create_booking — ical_events overlap check (lines 555-562) uses correct half-open interval math identical to bookings. iCal end_date convention (exclusive) is handled correctly: a booking starting on the iCal end_date is allowed (verified: 2027-06-01→06-04 when block ends 06-01 → 200 OK).",
+    "backend/server.py create_checkout — €0 deposit guard returns clean 400 with localized Italian message, no Stripe round-trip. Verified for 3-night stay (security_deposit=0).",
+    "AuthPages.js — Demo admin block fully removed; /login page text scanned for 'demo admin', 'admin@terracitoappartments.com', 'admin123' — none present.",
+    "Note: villa-smeraldo min_nights=3 means a 1-night auto-range from single-day click won't show price/Procedi button — UX is technically correct but a tooltip explaining 'minimum 3 nights' on the Procedi state would help. Not blocking.",
+    "Defense-in-depth: even if the frontend single-day check is bypassed, server still re-validates via /api/properties/calculate-price min_nights enforcement and ical_events overlap. Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6_critical_bugs.py (NEW)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (5/5 UI assertions)"},
+  "test_credentials": "admin@terracitoappartments.com / admin123",
+  "seed_data_creation": "Test fixtures self-clean: test_iter6_critical_bugs.py inserts a TEST_ical_<uuid> ical_events doc and 2 TEST_ bookings, and removes them in teardown. Manual UI seed (TEST_iter6_ui ical_events doc on villa-smeraldo for 2027-05-30) was deleted in cleanup. DB is clean.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 6 fixes from this iteration are verified working end-to-end. Backend regression suite at /app/backend/tests/test_iter6_critical_bugs.py covers iCal overlap, deposit-€0 guard, and full-payment Stripe checkout. To re-test the calendar UI behavior, seed a single ical_events doc (e.g. {start_date: <future_date>, end_date: <future_date>+1d, property_id: <villa-smeraldo id>}) then visit /property/villa-smeraldo and verify the day shows red and crossing it triggers the Italian sonner toast. Don't forget to clean up the seed doc.",
+  "rca of the issue": "Italian user's bug ('selezionavo dal 29 al 31 maggio anche se il 30 è rosso/occupato e il sistema accettava la prenotazione') was caused by react-day-picker's default range mode allowing a range that JUMPS OVER disabled middle dates — the disabled prop only prevents direct CLICK on a disabled cell but doesn't block including it inside a range. Fix in PropertyDetailPage.handleDateRangeSelect now iterates [from, to) and rejects the range if any day is in disabledIsoSet, showing a sonner toast and resetting selection. The 'pre-payment phase shows error on a free date' was traced to Stripe Checkout choking on amount=0 when the user picked 'deposit' on a ≤7-night stay (no security deposit) — fixed by an explicit 400 guard with a clear Italian error message before calling Stripe. Single-day booking impossibility was due to range mode requiring 2 clicks: now a single click on a free day where day+1 is also free auto-fills to=day+1. Demo admin banner removal is straightforward security/UX hygiene."
+}

@@ -91,11 +91,6 @@ export const LoginPage = () => {
             </Button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-card border border-border/60 text-sm">
-            <p className="text-muted-foreground mb-2">Demo Admin:</p>
-            <p className="text-foreground">admin@terracitoappartments.com / admin123</p>
-          </div>
         </div>
       </div>
     </div>

@@ -549,6 +549,17 @@ async def create_booking(data: BookingCreate, user: dict = Depends(get_current_u
     })
     if conflicting:
         raise HTTPException(status_code=400, detail="Property not available for these dates")
+
+    # Also block dates synced from external platforms (Airbnb / Booking / Vrbo / etc.).
+    # iCal convention: check_out is exclusive — same overlap math as bookings.
+    ical_conflict = await db.ical_events.find_one({
+        "property_id": data.property_id,
+        "$or": [
+            {"start_date": {"$lt": data.check_out}, "end_date": {"$gt": data.check_in}}
+        ]
+    })
+    if ical_conflict:
+        raise HTTPException(status_code=400, detail="Property not available for these dates")
     
     # Calculate price
     price_data = PriceCalculation(
@@ -844,6 +855,15 @@ async def create_checkout(
     stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
     
     amount = booking["total_price"] if payment_type == "full" else booking["deposit_amount"]
+
+    # Stripe Checkout cannot create a session for €0 — guard against the case
+    # where the user picks "deposit" but the stay is ≤7 nights (no security
+    # deposit required) and we'd otherwise emit an opaque 500 from Stripe.
+    if not amount or float(amount) <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Importo di pagamento non valido. Per questo soggiorno non è richiesta cauzione: scegli pagamento completo."
+        )
     
     # Get frontend URL from request origin or use backend URL
     origin = request.headers.get("origin", host_url)
