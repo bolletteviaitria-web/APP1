@@ -1752,13 +1752,45 @@ def _format_welcome_manual(p: dict, unlock_sensitive: bool) -> str:
     description = tr_it.get("description") or tr_en.get("description") or ""
     area = tr_it.get("area_description") or tr_en.get("area_description") or ""
 
-    address_line = loc.get("address", "")
-    if not unlock_sensitive and address_line:
-        address_line = "[address hidden — guest must provide booking code]"
+    # When the session is NOT verified by the backend (sensitive_unlocked=false),
+    # ALL fields that could be used to physically enter the property MUST be hidden.
+    # The AI is reminded by the system prompt to never improvise these — but we also
+    # remove the data from its context entirely so it literally cannot leak it.
+    LOCKED = "[locked — backend verification required]"
 
+    address_line = loc.get("address", "") or ""
     wifi_pwd = wm.get("wifi_password") or ""
-    if not unlock_sensitive and wifi_pwd:
-        wifi_pwd = "[hidden — guest must provide booking code]"
+    wifi_name = wm.get("wifi_name") or ""
+    parking = wm.get("parking_info") or ""
+    house_rules = wm.get("house_rules") or ""
+    transport = wm.get("transport_info") or ""
+    emergency = wm.get("emergency_contacts") or ""
+    local_tips = wm.get("local_tips") or ""
+    extra_faq = wm.get("extra_faq") or ""
+    check_in_t = wm.get("check_in_time") or ""
+    check_out_t = wm.get("check_out_time") or ""
+
+    if not unlock_sensitive:
+        if address_line:
+            address_line = LOCKED
+        if wifi_pwd:
+            wifi_pwd = LOCKED
+        if wifi_name:
+            wifi_name = LOCKED
+        if parking:
+            parking = LOCKED
+        # House rules are public-ish (no smoking, no pets) BUT often contain access codes →
+        # mask the entire field to be safe; the AI never had a reason to read it pre-checkin.
+        if house_rules:
+            house_rules = LOCKED
+        if transport:
+            transport = LOCKED
+        if emergency:
+            emergency = LOCKED
+        if local_tips:
+            local_tips = LOCKED
+        if extra_faq:
+            extra_faq = LOCKED
 
     parts = [
         f"# Property: {title}",
@@ -1774,20 +1806,20 @@ def _format_welcome_manual(p: dict, unlock_sensitive: bool) -> str:
         f"- Base price: €{(p.get('pricing') or {}).get('base_price', '?')}/night",
         f"- Weekend price (if defined): €{(p.get('pricing') or {}).get('weekend_price') or '—'}",
         f"- Cleaning fee (one-off): €{(p.get('pricing') or {}).get('cleaning_fee', 0)}",
-        f"- Security deposit (refundable, pre-auth only): €{(p.get('pricing') or {}).get('security_deposit', 0)}",
+        f"- Security deposit (refundable, pre-auth only): €{(p.get('pricing') or {}).get('security_deposit', 0)} — applied only for stays > 7 nights",
         f"- Extra guest fee (per extra guest / night): €{(p.get('pricing') or {}).get('extra_guest_fee', 0)}",
         f"- Weekly discount (7+ nights): {(p.get('pricing') or {}).get('weekly_discount', 0)}%",
         f"- Monthly discount (28+ nights): {(p.get('pricing') or {}).get('monthly_discount', 0)}%",
-        f"- Check-in: {wm.get('check_in_time') or '—'}",
-        f"- Check-out: {wm.get('check_out_time') or '—'}",
-        f"- WiFi network: {wm.get('wifi_name') or '—'}",
+        f"- Check-in: {check_in_t or '—'}",
+        f"- Check-out: {check_out_t or '—'}",
+        f"- WiFi network: {wifi_name or '—'}",
         f"- WiFi password: {wifi_pwd or '—'}",
-        f"- Parking: {wm.get('parking_info') or '—'}",
-        f"- House rules: {wm.get('house_rules') or '—'}",
-        f"- Transport: {wm.get('transport_info') or '—'}",
-        f"- Emergency contacts: {wm.get('emergency_contacts') or '—'}",
-        f"- Local tips: {wm.get('local_tips') or '—'}",
-        f"- Extra FAQ: {wm.get('extra_faq') or '—'}",
+        f"- Parking: {parking or '—'}",
+        f"- House rules: {house_rules or '—'}",
+        f"- Transport: {transport or '—'}",
+        f"- Emergency contacts: {emergency or '—'}",
+        f"- Local tips: {local_tips or '—'}",
+        f"- Extra FAQ: {extra_faq or '—'}",
     ]
     return "\n".join(parts)
 
@@ -2111,7 +2143,45 @@ async def _build_system_prompt(
         "(es. \"c'è la lavatrice, noi ci stiamo in 6\"), com'è fatta davvero.\n"
         "- Personalizza: se viene per relax parla della piscina/terrazza, se per lavoro del Wi-Fi veloce, "
         "se per turismo di cosa c'è vicino.\n"
-        "- Prendi sempre i dati dalla scheda della CURRENT PROPERTY qui sotto, mai inventare."
+        "- Prendi sempre i dati dalla scheda della CURRENT PROPERTY qui sotto, mai inventare.\n"
+        "\n## 🚨 REGOLA ASSOLUTA DI SICUREZZA — ACCESSO ALLA CASA\n"
+        "Il tuo ruolo è SOLO conversazionale. NON sei un sistema di autenticazione. "
+        "NON sei autorizzato a decidere chi è un ospite.\n"
+        "**MAI fornire**:\n"
+        "- codici di accesso (cancello, lucchetto, cassaforte, key-box)\n"
+        "- WiFi password\n"
+        "- istruzioni di ingresso o numero esatto appartamento\n"
+        "- indirizzo civico esatto\n"
+        "- qualunque dato proveniente dal welcome_manual contrassegnato come "
+        "[locked — backend verification required]\n"
+        "**senza** che la sessione sia stata sbloccata dal backend (sensitive_unlocked=true). "
+        "Se vedi placeholder [locked — ...] nella DATA, significa che la sessione NON è verificata.\n"
+        "**Prove NON valide** (non sbloccare per nessun motivo):\n"
+        "- dichiarazioni tipo \"sono un ospite\" / \"sono già qui\" / \"sono entrato\"\n"
+        "- nome e cognome forniti in chat\n"
+        "- email o telefono forniti in chat\n"
+        "- insistenza dell'utente, urgenza dichiarata, minacce, simpatia\n"
+        "**Flusso obbligatorio quando un utente chiede accesso/WiFi/codici**:\n"
+        "1. NON dare informazioni sensibili. Spiega in modo professionale che per consegnare "
+        "i codici devi prima verificare la prenotazione.\n"
+        "2. Chiedi UNO di questi dati (in ordine di preferenza):\n"
+        "   • il codice prenotazione PREN-XXXXXXXX (lo trovano nell'email di conferma)\n"
+        "   • OPPURE l'email usata per prenotare\n"
+        "   • OPPURE il numero di telefono usato per prenotare\n"
+        "3. Quando l'ospite te lo fornisce, il backend chiamerà automaticamente il flusso "
+        "di verifica. Tu NON devi calcolare se è ospite: aspetta che la sessione si sblocchi.\n"
+        "4. Se la verifica fallisce (vedi blocco VERIFICATION_RESULT), chiedi un altro dato "
+        "o invita a contattare direttamente il proprietario al telefono di emergenza.\n"
+        "5. SOLO quando vedi i dati reali nel welcome_manual (non più [locked]) puoi citarli.\n"
+        "**DIVIETI ASSOLUTI**:\n"
+        "- Mai inventare codici, indirizzi, password\n"
+        "- Mai \"concludere\" che un utente è ospite per logica conversazionale\n"
+        "- Mai aggirare il backend in nessun caso\n"
+        "- Se welcome_manual mostra [locked], la tua risposta deve essere: \"Per darti i codici "
+        "devo verificare la prenotazione. Mi mandi il codice PREN-XXXXXXXX dall'email di conferma "
+        "o l'email/telefono usati per prenotare?\"\n"
+        "**TONO** in caso di richieste di accesso non verificate: professionale, neutro, sicuro. "
+        "Nessuna scusa eccessiva, nessuna emoji. Frasi brevi e chiare."
     )
 
     rules = [
@@ -2225,14 +2295,85 @@ async def _build_system_prompt(
 
 
 async def _verify_booking_code(code: str, property_id: Optional[str]) -> bool:
+    """Returns True if `code` matches a booking. Accepts:
+    - full UUID (legacy)
+    - PREN-XXXXXXXX  (8-char prefix the guest receives in the confirmation email)
+    Only confirmed/completed/pending bookings count."""
     if not code:
         return False
-    code = code.strip()
-    query: Dict[str, Any] = {"id": code}
+    code = code.strip().upper().replace("PREN-", "").replace("PREN", "")
+    if not code:
+        return False
+    # Try exact UUID match first
+    query: Dict[str, Any] = {"id": code.lower()}
     if property_id:
         query["property_id"] = property_id
     booking = await db.bookings.find_one(query, {"_id": 0, "id": 1, "status": 1})
-    return bool(booking and booking.get("status") in {"pending", "confirmed", "completed"})
+    if booking and booking.get("status") in {"pending", "confirmed", "completed"}:
+        return True
+    # Then try 8-char prefix (case-insensitive)
+    if len(code) >= 4:
+        prefix_query: Dict[str, Any] = {"id": {"$regex": f"^{_re.escape(code.lower())}", "$options": "i"}}
+        if property_id:
+            prefix_query["property_id"] = property_id
+        booking = await db.bookings.find_one(prefix_query, {"_id": 0, "id": 1, "status": 1})
+        if booking and booking.get("status") in {"pending", "confirmed", "completed"}:
+            return True
+    return False
+
+
+async def _verify_guest_match(
+    booking_code: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+    property_id: Optional[str],
+) -> Optional[dict]:
+    """Find a booking that matches the provided identifiers AND is currently active
+    (today between check_in - 1d and check_out + 1d). Returns the matched booking
+    document or None. NEVER returns iCal-only blocks (those have no contact info)."""
+    if not (booking_code or email or phone):
+        return None
+    today = datetime.now(timezone.utc).date()
+    window_start = (today - timedelta(days=1)).isoformat()
+    window_end = (today + timedelta(days=1)).isoformat()
+    base: Dict[str, Any] = {
+        "status": {"$in": ["confirmed", "completed", "pending"]},
+        "check_in": {"$lte": window_end},
+        "check_out": {"$gte": window_start},
+    }
+    if property_id:
+        base["property_id"] = property_id
+
+    # Try by booking_code first (strongest)
+    if booking_code:
+        code = booking_code.strip().upper().replace("PREN-", "").replace("PREN", "").lower()
+        if code:
+            q = {**base}
+            if len(code) >= 32:
+                q["id"] = code
+            else:
+                q["id"] = {"$regex": f"^{_re.escape(code)}", "$options": "i"}
+            doc = await db.bookings.find_one(q, {"_id": 0})
+            if doc:
+                return doc
+
+    # Then by email + phone combo (or each alone). Email is more reliable.
+    if email:
+        em = email.strip().lower()
+        doc = await db.bookings.find_one({**base, "guest_email": {"$regex": f"^{_re.escape(em)}$", "$options": "i"}}, {"_id": 0})
+        if doc:
+            return doc
+
+    if phone:
+        ph = _re.sub(r"\D", "", phone)  # digits only
+        if len(ph) >= 6:
+            # match any booking whose phone digits-only contain this sequence
+            all_bookings = await db.bookings.find(base, {"_id": 0}).to_list(200)
+            for b in all_bookings:
+                ph_b = _re.sub(r"\D", "", b.get("guest_phone") or "")
+                if ph and ph_b and (ph in ph_b or ph_b in ph):
+                    return b
+    return None
 
 
 async def _resolve_property(property_id_or_slug: Optional[str]) -> Optional[dict]:
@@ -2383,6 +2524,172 @@ async def get_chat_lead_contact_public(session_id: str):
     }
 
 
+# ============ GUEST VERIFICATION (sensitive access gate) ============
+
+class GuestVerifyRequest(BaseModel):
+    session_id: str
+    booking_code: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    property_id: Optional[str] = None  # property slug or UUID
+
+
+VERIFY_MAX_ATTEMPTS = 3
+VERIFY_LOCKOUT_MINUTES = 30
+SESSION_TOKEN_HOURS = 24
+
+
+@api_router.post("/chat/verify-guest")
+async def chat_verify_guest(req: GuestVerifyRequest, request: Request):
+    """Verify that the chat user is an actual booked guest. Issues a session_token
+    on success that the chat AI can later present to /chat/get-access. Rate-limited
+    to 3 attempts per session; after that the session is locked for 30 minutes.
+
+    Returns:
+      { verified: True,  session_token, attempts_left, expires_at }
+      { verified: False, attempts_left, locked_until? }
+    """
+    if not req.session_id or len(req.session_id) < 4:
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    if not (req.booking_code or req.email or req.phone):
+        raise HTTPException(status_code=400, detail="Provide booking code, email or phone")
+
+    # Check existing lockout
+    state = await db.chat_verifications.find_one({"session_id": req.session_id}, {"_id": 0})
+    now = datetime.now(timezone.utc)
+    if state and state.get("locked_until"):
+        try:
+            lu = datetime.fromisoformat(state["locked_until"])
+            if lu > now:
+                return {
+                    "verified": False,
+                    "attempts_left": 0,
+                    "locked_until": state["locked_until"],
+                    "message": "Troppi tentativi. Riprova più tardi o contatta direttamente il proprietario.",
+                }
+        except Exception:
+            pass
+
+    prop = await _resolve_property(req.property_id) if req.property_id else None
+    booking = await _verify_guest_match(
+        req.booking_code, req.email, req.phone, prop["id"] if prop else None
+    )
+
+    # IP for audit
+    ip = request.client.host if request and request.client else None
+    attempt_doc = {
+        "session_id": req.session_id,
+        "ts": now.isoformat(),
+        "ip": ip,
+        "booking_code_provided": bool(req.booking_code),
+        "email_provided": bool(req.email),
+        "phone_provided": bool(req.phone),
+        "matched_booking_id": (booking or {}).get("id"),
+        "verified": bool(booking),
+    }
+    await db.chat_verification_audit.insert_one(attempt_doc)
+
+    if not booking:
+        # Increment attempts
+        attempts = (state or {}).get("attempts", 0) + 1
+        update = {
+            "session_id": req.session_id,
+            "attempts": attempts,
+            "last_attempt_at": now.isoformat(),
+        }
+        if attempts >= VERIFY_MAX_ATTEMPTS:
+            update["locked_until"] = (now + timedelta(minutes=VERIFY_LOCKOUT_MINUTES)).isoformat()
+        await db.chat_verifications.update_one(
+            {"session_id": req.session_id},
+            {"$set": update},
+            upsert=True,
+        )
+        return {
+            "verified": False,
+            "attempts_left": max(0, VERIFY_MAX_ATTEMPTS - attempts),
+            "locked_until": update.get("locked_until"),
+        }
+
+    # Success — issue session_token and store it
+    token = uuid.uuid4().hex
+    expires = now + timedelta(hours=SESSION_TOKEN_HOURS)
+    await db.chat_verifications.update_one(
+        {"session_id": req.session_id},
+        {"$set": {
+            "session_id": req.session_id,
+            "verified": True,
+            "verified_at": now.isoformat(),
+            "session_token": token,
+            "token_expires_at": expires.isoformat(),
+            "matched_booking_id": booking.get("id"),
+            "matched_property_id": booking.get("property_id"),
+            "attempts": 0,
+            "locked_until": None,
+        }},
+        upsert=True,
+    )
+    # Flag the conversation so the system prompt unlocks the welcome_manual fields
+    await db.chat_conversations.update_one(
+        {"session_id": req.session_id},
+        {"$set": {"sensitive_unlocked": True, "sensitive_unlocked_at": now.isoformat()}},
+        upsert=True,
+    )
+
+    return {
+        "verified": True,
+        "session_token": token,
+        "expires_at": expires.isoformat(),
+        "matched": {
+            "guest_name": booking.get("guest_name"),
+            "check_in": booking.get("check_in"),
+            "check_out": booking.get("check_out"),
+        },
+    }
+
+
+class GetAccessRequest(BaseModel):
+    session_id: str
+    session_token: str
+
+
+@api_router.post("/chat/get-access")
+async def chat_get_access(body: GetAccessRequest):
+    """Returns the welcome_manual / access info for a verified session.
+    Requires a valid, non-expired session_token issued by /chat/verify-guest."""
+    state = await db.chat_verifications.find_one({"session_id": body.session_id}, {"_id": 0})
+    if not state or not state.get("verified") or state.get("session_token") != body.session_token:
+        raise HTTPException(status_code=403, detail="Sessione non verificata o token non valido")
+    try:
+        if datetime.fromisoformat(state["token_expires_at"]) < datetime.now(timezone.utc):
+            raise HTTPException(status_code=403, detail="Token scaduto, riverifica")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=403, detail="Token non valido")
+
+    booking_id = state.get("matched_booking_id")
+    prop_id = state.get("matched_property_id")
+    if not (booking_id and prop_id):
+        raise HTTPException(status_code=404, detail="Prenotazione non trovata")
+    prop = await db.properties.find_one({"id": prop_id}, {"_id": 0}) or {}
+    wm = prop.get("welcome_manual") or {}
+    loc = prop.get("location") or {}
+    return {
+        "address": loc.get("address"),
+        "city": loc.get("city"),
+        "wifi_name": wm.get("wifi_name"),
+        "wifi_password": wm.get("wifi_password"),
+        "check_in_time": wm.get("check_in_time"),
+        "check_out_time": wm.get("check_out_time"),
+        "parking_info": wm.get("parking_info"),
+        "house_rules": wm.get("house_rules"),
+        "transport_info": wm.get("transport_info"),
+        "emergency_contacts": wm.get("emergency_contacts"),
+        "local_tips": wm.get("local_tips"),
+        "extra_faq": wm.get("extra_faq"),
+    }
+
+
 @api_router.post("/chat/message", response_model=ChatResponse)
 async def chat_message(req: ChatRequest):
     if not EMERGENT_LLM_KEY:
@@ -2395,7 +2702,87 @@ async def chat_message(req: ChatRequest):
         raise HTTPException(status_code=400, detail="session_id required")
 
     property_doc = await _resolve_property(req.property_id)
-    unlock_sensitive = await _verify_booking_code(req.booking_code or "", property_doc.get("id") if property_doc else None)
+
+    # Check if the session was previously verified (sensitive_unlocked) by a successful
+    # /chat/verify-guest call — that flag persists across messages.
+    prior_state = await db.chat_verifications.find_one(
+        {"session_id": req.session_id}, {"_id": 0, "verified": 1, "token_expires_at": 1}
+    )
+    prior_unlocked = False
+    if prior_state and prior_state.get("verified"):
+        try:
+            if datetime.fromisoformat(prior_state["token_expires_at"]) > datetime.now(timezone.utc):
+                prior_unlocked = True
+        except Exception:
+            prior_unlocked = False
+
+    # Auto-detect verification attempts inline in the user message.
+    # Triggers: PREN-XXXX code, OR any email + a date that looks like check-in/out.
+    verification_result_block = ""
+    if not prior_unlocked:
+        msg_lower = (req.message or "").lower()
+        # 1) PREN-XXXX code
+        pren_match = _re.search(r"\bPREN[-\s]?([A-F0-9]{6,32})\b", req.message or "", flags=_re.IGNORECASE)
+        # 2) email
+        email_match = _re.search(r"\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b", req.message or "")
+        # 3) phone — only if user is in a verification-context message ("codice", "wifi", etc.)
+        phone_match = None
+        access_keywords = (
+            "codice", "codici", "accesso", "wifi", "wi-fi", "chiavi", "lucchetto",
+            "cancello", "porta", "entr", "check-in", "checkin", "ingresso",
+            "verifica", "prenotazione", "booking",
+        )
+        is_access_context = any(k in msg_lower for k in access_keywords)
+        if is_access_context:
+            phone_match = _re.search(r"\b(\+?\d[\d\s\-\.]{7,16}\d)\b", req.message or "")
+
+        if pren_match or (email_match and is_access_context) or phone_match:
+            try:
+                verify_result = await chat_verify_guest(
+                    GuestVerifyRequest(
+                        session_id=req.session_id,
+                        booking_code=pren_match.group(0) if pren_match else None,
+                        email=email_match.group(0) if (email_match and is_access_context) else None,
+                        phone=phone_match.group(0) if phone_match else None,
+                        property_id=property_doc.get("id") if property_doc else None,
+                    ),
+                    request=Request(scope={"type": "http", "headers": [], "client": ("0.0.0.0", 0)}),
+                )
+                if verify_result.get("verified"):
+                    prior_unlocked = True
+                    verification_result_block = (
+                        "## VERIFICATION_RESULT — SERVER-VERIFIED\n"
+                        f"Sessione SBLOCCATA. Ospite verificato: "
+                        f"{(verify_result.get('matched') or {}).get('guest_name') or '—'}, "
+                        f"check-in {(verify_result.get('matched') or {}).get('check_in')}, "
+                        f"check-out {(verify_result.get('matched') or {}).get('check_out')}. "
+                        "Ora puoi mostrare i dati del welcome_manual che vedi qui sotto."
+                    )
+                else:
+                    locked = verify_result.get("locked_until")
+                    attempts_left = verify_result.get("attempts_left", 0)
+                    verification_result_block = (
+                        "## VERIFICATION_RESULT — SERVER-VERIFIED\n"
+                        + (f"Sessione BLOCCATA fino a {locked} (troppi tentativi). "
+                           "Invita l'ospite a contattare direttamente il proprietario al telefono."
+                           if locked else
+                           f"Verifica FALLITA. Tentativi rimasti: {attempts_left}. "
+                           "Chiedi un altro identificativo (codice PREN-XXXXXXXX, oppure email/telefono "
+                           "diversi da quelli appena provati). NON sbloccare nulla.")
+                    )
+            except HTTPException as ve:
+                verification_result_block = (
+                    "## VERIFICATION_RESULT — SERVER-VERIFIED\n"
+                    f"Verifica non riuscita: {ve.detail}. Chiedi all'ospite il codice PREN-XXXXXXXX."
+                )
+            except Exception as ve:
+                logger.warning(f"Auto verify-guest failed: {ve}")
+
+    # Final unlock = prior verification OR fresh verification this turn OR legacy booking_code in payload
+    legacy_unlock = await _verify_booking_code(
+        req.booking_code or "", property_doc.get("id") if property_doc else None
+    )
+    unlock_sensitive = bool(prior_unlocked or legacy_unlock)
     # Load any previously-captured lead on this session so the AI knows what
     # info has already been collected and doesn't re-ask.
     existing_lead = await db.chat_leads.find_one({"session_id": req.session_id}, {"_id": 0})
@@ -2506,7 +2893,7 @@ async def chat_message(req: ChatRequest):
     today_line = f"[TODAY: {datetime.now(timezone.utc).date().isoformat()}]"
     session_line = f"[SESSION_ID: {req.session_id}]  (usa questo valore esatto in coda al link /prenota/... come &session=<SESSION_ID>)"
 
-    parts = [p for p in (history_prefix, today_line, session_line, known_info_block, availability_prefix, price_prefix) if p]
+    parts = [p for p in (history_prefix, today_line, session_line, known_info_block, availability_prefix, price_prefix, verification_result_block) if p]
     if parts:
         user_text_for_llm = "\n\n".join(parts) + "\n\n---\nGuest message:\n" + req.message
     else:
