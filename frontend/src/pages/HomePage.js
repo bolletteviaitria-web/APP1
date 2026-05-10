@@ -20,7 +20,7 @@ export const HomePage = () => {
     } catch (error) {
       // Seed endpoint is idempotent — only meaningful failures are network issues we can ignore here
       if (process.env.NODE_ENV !== 'production') {
-        console.debug('seed (non-blocking):', error?.response?.status || error?.message);
+      console.debug('seed (non-blocking):', error?.response?.status || error?.message);
       }
     }
   }, []);

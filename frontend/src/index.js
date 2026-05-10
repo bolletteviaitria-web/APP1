@@ -11,7 +11,13 @@ axios.interceptors.response.use(
   (err) => {
     const status = err?.response?.status;
     if (status === 401) {
-      try { localStorage.removeItem("token"); } catch (_) {}
+      try {
+        localStorage.removeItem("token");
+      } catch (storageErr) {
+        // localStorage may be disabled in private browsing — non-fatal, the
+        // header cleanup below still prevents further authenticated requests.
+        console.warn("[auth] localStorage cleanup failed:", storageErr);
+      }
       delete axios.defaults.headers.common["Authorization"];
       if (typeof window !== "undefined") {
         const p = window.location.pathname;
