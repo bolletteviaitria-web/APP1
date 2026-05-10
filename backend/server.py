@@ -2373,21 +2373,15 @@ async def _verify_guest_match(
     phone: Optional[str],
     property_id: Optional[str],
 ) -> Optional[dict]:
-    """Find a booking that matches the provided identifiers AND is currently
-    relevant: the guest can verify from 30 days before check-in (to prepare)
-    up to 7 days after check-out (for post-stay support). Returns the matched
-    booking document or None. NEVER returns iCal-only blocks (those have no
-    contact info)."""
+    """Find a booking that matches the provided identifiers, regardless of dates.
+    The CALLER must then check `_is_access_window_open(booking, today)` to decide
+    whether to actually unlock the sensitive info — codes/WiFi/address are released
+    only from the check-in date through check-out + 1 day. NEVER returns iCal-only
+    blocks (those have no contact info)."""
     if not (booking_code or email or phone):
         return None
-    today = datetime.now(timezone.utc).date()
-    # Window: check-in can be up to 30 days in the future; check-out up to 7 days in the past.
-    window_end = (today + timedelta(days=30)).isoformat()
-    window_start = (today - timedelta(days=7)).isoformat()
     base: Dict[str, Any] = {
         "status": {"$in": ["confirmed", "completed", "pending"]},
-        "check_in": {"$lte": window_end},
-        "check_out": {"$gte": window_start},
     }
     if property_id:
         base["property_id"] = property_id
@@ -2415,13 +2409,24 @@ async def _verify_guest_match(
     if phone:
         ph = _re.sub(r"\D", "", phone)  # digits only
         if len(ph) >= 6:
-            # match any booking whose phone digits-only contain this sequence
             all_bookings = await db.bookings.find(base, {"_id": 0}).to_list(200)
             for b in all_bookings:
                 ph_b = _re.sub(r"\D", "", b.get("guest_phone") or "")
                 if ph and ph_b and (ph in ph_b or ph_b in ph):
                     return b
     return None
+
+
+def _is_access_window_open(booking: dict) -> bool:
+    """Sensitive info is released only on the check-in day through check-out + 1d.
+    Earlier than check-in → guest must wait. After check-out + 1d → too late."""
+    try:
+        ci = datetime.fromisoformat(booking["check_in"][:10]).date()
+        co = datetime.fromisoformat(booking["check_out"][:10]).date()
+    except Exception:
+        return False
+    today = datetime.now(timezone.utc).date()
+    return ci <= today <= (co + timedelta(days=1))
 
 
 async def _resolve_property(property_id_or_slug: Optional[str]) -> Optional[dict]:
