@@ -177,13 +177,29 @@ export const PropertyDetailPage = () => {
 
     const { from, to } = range;
 
-    // Single-day click → start a new selection (and auto-suggest +1 night).
+    // Single-day click → start a new selection (and auto-suggest min_nights stay).
     if (from && !to) {
-      const next = addDays(from, 1);
-      const nextIso = format(next, 'yyyy-MM-dd');
-      // If the day right after check-in is free, propose 1-night stay.
-      if (!disabledIsoSet.has(nextIso)) {
-        setDateRange({ from, to: next });
+      const minNights = Math.max(1, property?.min_nights || 1);
+      // Try min_nights first; if any night in between is blocked, walk back to 1 night.
+      let suggested = null;
+      for (let n = minNights; n >= 1; n--) {
+        let cur = new Date(from);
+        const candidate = addDays(from, n);
+        let allFree = true;
+        while (cur < candidate) {
+          if (disabledIsoSet.has(format(cur, 'yyyy-MM-dd'))) {
+            allFree = false;
+            break;
+          }
+          cur = addDays(cur, 1);
+        }
+        if (allFree) {
+          suggested = candidate;
+          break;
+        }
+      }
+      if (suggested) {
+        setDateRange({ from, to: suggested });
       } else {
         setDateRange({ from, to: null });
         setPriceBreakdown(null);
@@ -212,7 +228,7 @@ export const PropertyDetailPage = () => {
       }
       setDateRange({ from, to });
     }
-  }, [disabledIsoSet, lang]);
+  }, [disabledIsoSet, lang, property]);
 
   const handleProceedToBooking = () => {
     if (!dateRange.from || !dateRange.to || !priceBreakdown) return;
